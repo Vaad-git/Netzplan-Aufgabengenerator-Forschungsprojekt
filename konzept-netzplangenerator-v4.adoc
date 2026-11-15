@@ -1,0 +1,265 @@
+= Konzept: Dynamische Generierung von Netzplanaufgaben (V4)
+Til Müller (s88754)
+Projektseminar VocationALADIN – Wintersemester 2026/2027
+:doctype: book
+:toc: left
+:toclevels: 3
+:icons: font
+:imagesdir: images
+:student-id: s88754
+
+// AsciiDoc-Übertragung des Word-Konzepts V4. Die beschriebenen Funktionen und
+// der Umsetzungsstand entsprechen der bereitgestellten V4-Konzeptdatei.
+
+== 1. Ziel und Grundidee
+
+Ziel ist die Konzeption eines Aufgabengenerators, der individuelle Netzplanaufgaben mit zufällig erzeugten Vorgängen, Abhängigkeiten und Werten erstellt. Die Nutzer sollen dabei verschiedene Möglichkeiten zur Bearbeitung der Aufgaben erhalten, beispielsweise eine grafische oder tabellarische Bearbeitung sowie die eigenständige Erstellung eines Netzplans auf Grundlage einer Vorgangstabelle.
+
+Der strukturelle Zufall entsteht durch wechselnde Netzstrukturen mit Verzweigungen, parallelen Abläufen und Zusammenführungen. Zu jeder generierten Aufgabe wird eine Musterlösung berechnet, anhand derer die Eingaben der Studierenden automatisch überprüft und bewertet werden. Zusätzlich erhalten sie eine Rückmeldung zu ihren Fehlern, um ihre Berechnungen nachvollziehen und verbessern zu können.
+
+== 2. Parameter der Generierung
+
+Für die erste Version sind folgende Parameter vorgesehen:
+
+* *Anzahl der Vorgänge / Knoten (ganzzahlig):* Die Vorgangszahl wird innerhalb des gewählten Schwierigkeitsprofils zufällig bestimmt. Im aktuell umgesetzten Profil „Einfach“ werden 6 bis 8 Vorgänge erzeugt. Start- und Endvorgang sind in dieser Gesamtzahl enthalten. Weitere Schwierigkeitsprofile und eine spätere individuelle Anpassung durch den Administrator sind vorgesehen.
+
+* *Vorgangsdauern (ganzzahlig):* Jedem Vorgang wird unabhängig eine ganzzahlige Dauer aus dem zum Schwierigkeitsprofil gehörenden Wertebereich zugewiesen. Im aktuell umgesetzten Profil „Einfach“ liegt dieser Bereich bei 1 bis 5 Zeiteinheiten. Die Dauer wird gleichverteilt durch eine Zufallsauswahl aus den ganzzahligen Werten des Bereichs bestimmt.
+
+* *Abhängigkeiten und Netzstruktur:*
++
+** *Anzahl der Kanten:* Die Anzahl der Kanten wird nicht als eigener Wertebereich vorab festgelegt. Sie ergibt sich aus der notwendigen Grundstruktur, den zusätzlichen Kanten zur Erzeugung der gewünschten Verzweigungen und Zusammenführungen sowie den optionalen Zusatzkanten. Für einen Netzplan mit n Vorgängen bildet n - 1 die theoretische Untergrenze für eine zusammenhängende Grundstruktur; die konkrete Grundstruktur kann bereits mehr Kanten enthalten. Die tatsächliche Kantenanzahl ergibt sich somit dynamisch aus der erzeugten Netzstruktur.
+
+** *Verzweigungen:* Als Verzweigung gilt ein Vorgang mit mindestens zwei unmittelbaren Nachfolgern. Die gewünschte Anzahl der Verzweigungsknoten wird innerhalb des jeweiligen Schwierigkeitsprofils zufällig ausgewählt und unabhängig von der gewünschten Anzahl der Zusammenführungsknoten festgelegt. Ausgehend von der Grundstruktur ergänzt der Generator zusätzliche Kanten, bis die gewünschte Anzahl erreicht ist. Diese Kanten können Ebenen überspringen. Im aktuell umgesetzten Profil „Einfach“ sind 1 bis 2 Verzweigungsknoten vorgesehen.
+
+** *Zusammenführungen:* Als Zusammenführung gilt ein Vorgang mit mindestens zwei unmittelbaren Vorgängern. Die gewünschte Anzahl der Zusammenführungsknoten wird innerhalb des jeweiligen Schwierigkeitsprofils zufällig und unabhängig von der gewünschten Anzahl der Verzweigungen ausgewählt. Die notwendigen Kanten werden so ergänzt, dass die vorgegebene Anzahl erreicht wird, ohne die strukturellen Grenzwerte zu überschreiten. Im aktuell umgesetzten Profil „Einfach“ sind 1 bis 2 Zusammenführungsknoten vorgesehen.
+
+** *Gültigkeitsbedingungen der Netzstruktur:* Jeder erzeugte Netzplan wird verbindlich auf seine Gültigkeit geprüft. Die Netzstruktur muss kreislauffrei sein und genau einen Start- sowie einen Endvorgang besitzen. Jeder Vorgang muss vom Start aus erreichbar sein und einen Weg zum Endvorgang haben. Selbstkanten, doppelte Kanten, Verweise auf nicht vorhandene Vorgänge und leere Ebenen sind nicht zulässig. Jeder Vorgang muss genau einer Ebene zugeordnet sein; Kanten dürfen nur zu einer späteren Ebene führen. Zusätzlich gelten die im Profil festgelegte maximale Ebenenbreite sowie die Grenzen für unmittelbare Vorgänger und Nachfolger.
+
+** *Beziehungstypen:* In der ersten Version werden ausschließlich Ende-Anfang-Beziehungen (EA, englisch: Finish-to-Start, FS) verwendet. Dabei darf ein Nachfolger erst beginnen, wenn sein Vorgänger beendet ist. Weitere Beziehungstypen, wie Anfang-Anfang (AA/SS), Ende-Ende (EE/FF) und Anfang-Ende (AE/SF), sind für spätere Erweiterungen vorgesehen und werden zunächst nicht berücksichtigt.
+
+** *Schwierigkeitsgrad:* Der Schwierigkeitsgrad wird über vordefinierte Profile gesteuert, die Wertebereiche für Vorgangszahl und Vorgangsdauern sowie Vorgaben für Verzweigungen, Zusammenführungen, Ebenenbreite und optionale Zusatzkanten enthalten. Im V4-Prototyp ist zunächst das Profil „Einfach“ implementiert. Weitere Profile – beispielsweise „Sehr Einfach“, „Normal“, „Schwer“ und „Sehr Schwer“ – können anschließend ergänzt werden. Die konkreten Wertebereiche werden anhand von Tests überprüft und angepasst.
++
+*Aktuell umgesetzte Werte des Schwierigkeitsprofils „Einfach“:*
++
+[cols="2,2",options="header"]
+|===
+|Parameter |Wert
+|Vorgangszahl |6 bis 8
+|Vorgangsdauer |1 bis 5 Zeiteinheiten
+|Verzweigungen |1 bis 2
+|Zusammenführungen |1 bis 2
+|Vorgänge pro Ebene |Maximal 3
+|Unmittelbare Vorgänger je Vorgang |Maximal 3
+|Unmittelbare Nachfolger je Vorgang |Maximal 3
+|Optionale Zusatzkanten |0 bis 2 angefordert; tatsächlich können weniger ergänzt werden
+|===
+
+== 3. Konzept der Aufgabengenerierung
+
+. *Schwierigkeitsgrad und Generierungsparameter festlegen:*
++
+.. *Schwierigkeitsgrad auswählen:* Zu Beginn wird ein Schwierigkeitsprofil ausgewählt, das die Wertebereiche für die Vorgangszahl, die Vorgangsdauern sowie die strukturellen Vorgaben festlegt. Im aktuellen Prototyp steht hierfür das Profil „Einfach“ zur Verfügung.
+
+.. *Vorgangszahl festlegen:* Die Anzahl der Vorgänge wird zufällig innerhalb des im gewählten Profil hinterlegten Minimum-Maximum-Bereichs bestimmt.
+
+.. *Vorgangsdauern festlegen:* Für jeden Vorgang wird eine ganzzahlige Dauer unabhängig und gleichverteilt aus dem zum Profil gehörenden Wertebereich ausgewählt.
+
+. *Vorgänge erzeugen:* Es werden Vorgänge mit eindeutigen Kennungen (z. B. A, B, C …) angelegt und zufällige Dauern zugewiesen.
++
+.. *Vorgänge anlegen:* Die zuvor festgelegte Anzahl an Vorgängen wird erzeugt. Jeder Vorgang erhält eine eindeutige Kennung, beispielsweise A, B, C usw. Der erste Vorgang bildet den Start und der letzte Vorgang das Ende des Netzplans.
+
+.. *Vorgangsdauern zuweisen:* Jedem Vorgang wird eine zufällige ganzzahlige Dauer innerhalb des vorgesehenen Wertebereichs zugewiesen. Die Auswahl erfolgt gleichverteilt über die möglichen ganzzahligen Werte.
+
+. *Abhängigkeiten und Netzstruktur festlegen:*
++
+.. *Kanten und Grundstruktur erzeugen:* Eine feste Kantenanzahl wird nicht vorab festgelegt. Stattdessen wird zunächst eine zusammenhängende Grundstruktur erzeugt. Die tatsächliche Anzahl der Kanten ergibt sich aus den Verbindungen dieser Grundstruktur und den danach ergänzten strukturellen sowie optionalen Zusatzkanten.
+
+.. *Verzweigungen und Zusammenführungen berücksichtigen:* Die gewünschte Anzahl der Verzweigungs- und Zusammenführungsknoten wird unabhängig voneinander innerhalb der jeweiligen Profilbereiche ausgewählt. Der Generator ergänzt hierfür notwendige Kanten und berücksichtigt dabei die maximal zulässige Anzahl an Vorgängern und Nachfolgern. Ist eine Kombination mit der erzeugten Grundstruktur nicht realisierbar, wird eine neue Struktur bzw. Parameterkombination versucht.
+
+.. *Gültige Netzstruktur erzeugen:* Die mittleren Vorgänge werden zunächst zufällig in Sammlungen mit jeweils maximal drei Vorgängen aufgeteilt. Start- und Endvorgang bilden jeweils eine eigene Sammlung. Benachbarte Sammlungen werden durch zufällig ausgewählte Verbindungsmuster verbunden, sodass alle Vorgänge in die Grundstruktur eingebunden sind. Anschließend können weitere Kanten Sammlungen bzw. Ebenen überspringen, um die gewünschte Anzahl an Verzweigungen und Zusammenführungen zu erreichen. Die endgültigen Ebenen werden erst nach Abschluss der Kantenbildung aus dem längsten Weg vom Startvorgang abgeleitet.
+
+. *Gültigkeit prüfen:*
++
+.. *Netzstruktur validieren:* Nach der Generierung wird die Netzstruktur verbindlich validiert. Geprüft werden insbesondere Kreislauffreiheit, genau ein Start- und Endvorgang, Erreichbarkeit aller Vorgänge vom Start und ihre Einbindung in einen Weg zum Ende, eindeutige und gültige Kanten, die Ebenenzuordnung sowie die Grenzwerte für Ebenenbreite, Vorgänger und Nachfolger.
+
+.. *Fehlerhaften Graphen verwerfen:* Falls eine Struktur die Prüfung nicht besteht oder die gewünschten Strukturwerte nicht erreicht werden können, wird sie verworfen und eine neue Struktur erzeugt. Eine nachträgliche Reparatur des Graphen ist nicht vorgesehen. Die Generierung wird nach einer begrenzten Anzahl von Versuchen mit einer verständlichen Fehlermeldung abgebrochen.
+
+.. *Fehlerprotokoll (optional):* Für die spätere Fehlersuche könnte ein Protokoll fehlerhafter Graphen gespeichert werden, damit der Entwickler mögliche Probleme im Aufgabengenerator untersuchen kann. Ob und in welcher Form diese zusätzliche Prüfung umgesetzt wird, bleibt offen.
+
+. *Musterlösung berechnen:*
++
+.. *Zeitwerte berechnen:* Auf Grundlage der Vorgangsdauern und Abhängigkeiten werden die frühesten und spätesten Anfangs- und Endzeitpunkte (FAZ, FEZ, SAZ, SEZ) für alle Vorgänge berechnet.
+
+.. *Gesamtpuffer bestimmen:* Für jeden Vorgang wird der Gesamtpuffer berechnet.
+
+.. *Kritischen Pfad und Projektdauer ermitteln:* Anhand der berechneten Zeitwerte werden der kritische Pfad und die Gesamtdauer des Projekts bestimmt. Die Ergebnisse werden als Musterlösung für die spätere automatische Bewertung gespeichert.
+
+. *Aufgabe bereitstellen:*
++
+.. *Aufgabeninformationen zusammenstellen:* Die erzeugten Vorgänge, ihre Dauern, die Abhängigkeiten und gegebenenfalls die zugehörige Aufgabenbeschreibung werden zusammengestellt.
+
+.. *Aufgabe und Musterlösung übergeben:* Die Aufgabeninformationen werden an die Benutzeroberfläche übergeben. Die Musterlösung wird für die spätere Überprüfung und Bewertung der Nutzereingaben bereitgestellt, ohne den Lernenden vor der Bearbeitung angezeigt zu werden.
+
+== 4. GUI zur Bearbeitung
+
+* *Vorgangstabelle:* Der Nutzer erhält eine Tabelle mit den Vorgängen, ihren Dauern und den jeweiligen unmittelbaren Vorgängern. Die Vorgänge können durch eindeutige Kennungen (z. B. A, B, C, …) oder durch realitätsnahe, beispielsweise KI-generierte Bezeichnungen dargestellt werden.
+* *Aufgabenbeschreibung:* Alternativ oder zusätzlich kann eine textuelle Aufgabenbeschreibung bereitgestellt werden, aus der der Nutzer zunächst die Vorgänge, Dauern und Abhängigkeiten ableiten muss und sich möglicherweise diese in eine leere Vorgangstabelle eintragen kann.
+* *Netzplan manuell erstellen:*
++
+** Dem Nutzer wird eine leere grafische Arbeitsfläche zur Verfügung gestellt, auf der er den Netzplan selbstständig aufbauen kann.
+** Der Nutzer erstellt für jeden Vorgang einen Knoten (bspw. Drag and Drop), ordnet diesen auf der Arbeitsfläche an und trägt die zugehörigen Informationen ein.
+** Die Knoten werden durch gerichtete Kanten miteinander verbunden, um die vorgegebenen Abhängigkeiten darzustellen. Die Struktur des Netzplans wird somit eigenständig durch den Nutzer erstellt und nicht bereits vorgegeben.
+
+* *Berechnungsergebnisse eingeben:* Die Vorgangsknoten enthalten Eingabefelder für die FAZ, FEZ, SAZ, SEZ und die Dauer des Vorgangs sowie dessen Bezeichnung (A, B, C, …) und Gesamtpuffer. Zusätzlich soll der Nutzer den kritischen Pfad und die Projektdauer angeben können. Wenn nur eine Vorgangstabelle gegeben ist, soll dem Nutzer optional zusätzlich eine grafische Version ausgegeben werden, wo er direkt die Werte wie FAZ, FEZ usw. eintragen kann.
+
+[NOTE]
+====
+Konkrete Gestaltung und technische Umsetzung der grafischen Oberfläche werden im weiteren Entwicklungsverlauf festgelegt.
+====
+
+.Beispielhafte Darstellung einer Vorgangstabelle
+[cols="1,1,2",options="header"]
+|===
+|Vorgang |Dauer |Unmittelbare Vorgänger
+|A |4 |–
+|B |3 |A
+|C |5 |A
+|D |2 |B, C
+|===
+
+Die konkreten Vorgänge und Werte werden für jede Aufgabe neu generiert. Als Eingabefelder sind insbesondere FAZ, FEZ, SAZ, SEZ und Gesamtpuffer pro Vorgang sowie ein Feld für den kritischen Pfad vorgesehen.
+
+== 5. Bewertung und Feedback
+
+Die Bewertung erfolgt anhand einer automatisch berechneten Musterlösung. Dabei wird zwischen der strukturellen Lösung und den Berechnungsergebnissen unterschieden. Welche Bestandteile bewertet werden, hängt vom jeweiligen Aufgabentyp ab.
+
+=== 1. Bewertung nach Aufgabentyp
+
+* *Aufgabentyp 1 – Vorgegebene Vorgangstabelle:* Bewertet werden die geforderten Berechnungsergebnisse, insbesondere FAZ, FEZ, SAZ, SEZ und Gesamtpuffer je Vorgang sowie gegebenenfalls der kritische Pfad und die Projektdauer. Da die Vorgangsstruktur bereits vorgegeben ist, entfallen Strukturpunkte.
+* *Aufgabentyp 2 – Aufgabenbeschreibung:* Bewertet werden sowohl die aus der Beschreibung abgeleitete Vorgangstabelle mit Vorgängen, Dauern und Abhängigkeiten als auch die anschließenden Berechnungsergebnisse.
+* *Aufgabentyp 3 – Selbstständig erstellter Netzplan:* Bewertet werden die korrekte grafische Darstellung der Vorgänge und Abhängigkeiten sowie die eingetragenen Berechnungsergebnisse. Gegebenenfalls werden zusätzlich der kritische Pfad und die Projektdauer bewertet.
+
+=== 2. Zu berücksichtigende Fehlertypen
+
+Bei der Auswertung sollen unterschiedliche Fehlerarten möglichst getrennt erkannt werden können. Dazu gehören insbesondere:
+
+* *Fehler in der Vorgangstabelle:* Vorgänge fehlen, sind falsch zugeordnet oder es wurde eine falsche Vorgangsdauer übernommen.
+* *Strukturfehler:* Abhängigkeiten fehlen, wurden zusätzlich eingefügt oder sind falsch gerichtet. Auch fehlerhafte Verzweigungen und Zusammenführungen sollen berücksichtigt werden.
+* *Fehler bei den Zeitwerten:* FAZ, FEZ, SAZ oder SEZ wurden falsch berechnet oder eingetragen.
+* *Fehler beim Gesamtpuffer:* Der Gesamtpuffer eines Vorgangs wurde falsch bestimmt.
+* *Fehler beim kritischen Pfad oder bei der Projektdauer:* Der kritische Pfad wurde falsch identifiziert oder die Gesamtdauer des Projekts falsch berechnet.
+
+=== 3. Punkteverteilung und Umgang mit Folgefehlern
+
+Die Bewertung soll nach Möglichkeit einzelne Ergebnisse berücksichtigen und Teilpunkte ermöglichen. Ein Fehler in der Vorgangstabelle oder Netzstruktur soll nicht automatisch dazu führen, dass sämtliche nachfolgenden Berechnungsergebnisse als falsch bewertet werden.
+
+Wenn eine fehlerhafte, vom Nutzer erstellte Struktur technisch ausgewertet werden kann, soll geprüft werden, ob die eingegebenen Zeitwerte auf Grundlage dieser Struktur rechnerisch korrekt sind. Dadurch können Folgefehler bei der Bewertung berücksichtigt werden. Ob hierfür volle oder reduzierte Teilpunkte vergeben werden, hängt von der noch auszuarbeitenden Bewertungslogik ab.
+
+Die genaue Punkteverteilung sowie die technische Erkennung und Bewertung einzelner Fehler und Folgefehler werden im weiteren Entwicklungsverlauf konzipiert und überprüft.
+
+=== 4. Feedback für Studierende
+
+Nach der Bearbeitung soll eine Rückmeldung zur erreichten Punktzahl und zu den erkannten Fehlern erfolgen. Dabei sollen möglichst die betroffenen Vorgänge oder Berechnungsschritte benannt werden. Ergänzend können Hinweise helfen, die Fehlerursache nachzuvollziehen und die Lösung zu verbessern.
+
+Ziel ist eine nachvollziehbare automatische Bewertung, die nicht nur richtige und falsche Ergebnisse unterscheidet, sondern Studierenden auch bei der Verbesserung ihrer Netzplanberechnungen hilft.
+
+[NOTE]
+====
+FAZ – Frühestmöglicher Anfangszeitpunkt; FEZ – Frühestmöglicher Endzeitpunkt; SAZ – Spätestmöglicher Anfangszeitpunkt; SEZ – Spätestmöglicher Endzeitpunkt.
+====
+
+== 6. Mögliche Erweiterung
+
+=== Generative KI zur Erstellung von Vorgangsbezeichnungen und Aufgabenbeschreibungen
+
+Für eine spätere Erweiterung ist geplant, Generative KI einzusetzen, um realitätsnahe Vorgangsbezeichnungen und zusammenhängende Aufgabenbeschreibungen zu erstellen. Die Bezeichnungen und Beschreibungen sollen thematisch zu einem gemeinsamen Szenario passen, beispielsweise einem Bauprojekt, einer Softwareentwicklung oder einem Produktionsprozess. Dadurch sollen die generierten Netzplanaufgaben abwechslungsreicher und praxisnäher gestaltet werden.
+
+Die technische Umsetzung ist noch offen. Falls die Integration aus zeitlichen oder technischen Gründen nicht möglich ist, kann zunächst auf einfache Vorgangskennungen (z. B. A, B, C …) und vorgegebene Aufgabenbeschreibungen zurückgegriffen werden.
+
+=== Erweiterung der Anordnungsbeziehungen
+
+Eine weitere mögliche Erweiterung ist die Unterstützung zusätzlicher Anordnungsbeziehungen, insbesondere Anfang-Anfang (AA/SS) und Ende-Ende (EE/FF). Diese sind nicht Bestandteil der ersten Version. Zunächst liegt der Fokus auf Ende-Anfang-Netzplänen (EA/FS) sowie einer zuverlässigen Generierung, Berechnung und Bewertung.
+
+== Kurzüberblick
+
+* *Input:* Schwierigkeitsgrad und Profilparameter.
+* *Generierung (V4):* Vorgänge, Dauern und dynamische, validierte Netzstruktur.
+* *Output (derzeit):* Strukturierter Netzplan und grafische SVG-Ausgabe.
+* *Noch nicht umgesetzt:* Musterlösung, Bewertung, Feedback und REST-Schnittstelle.
+
+== GUI-Inspiration / Vorstellungen
+
+GUI-Inspiration / Vorstellungen (kann sich basierend auf neuen Entwicklungen/Programmierungsumständen ändern):
+
+image::gui-inspiration-precedence-diagramming.jpeg[Beispielhafte Darstellung eines Precedence-Diagramms, width=100%]
+
+_Beispielhafte Darstellung aus Modul Informationsmanagement – SS und FS, sowie das Konzept Lag sind hierbei nach dem aktuellen Stand zu ignorieren._
+
+== 7. Technisches Konzept
+
+=== 7.1 Technische Grundlagen und Datenmodell
+
+==== 7.1.1 Vorgangsdaten
+
+* Jeder Vorgang wird mit einer eindeutigen Kennung, einer Bezeichnung (str) und einer Dauer (int) erfasst. Die Vorgänge werden über ihre Kennungen in einer gemeinsamen Datenstruktur gespeichert. Der Start- und der Endvorgang werden zusätzlich explizit ausgewiesen.
+
+==== 7.1.2 Abhängigkeiten
+
+* Abhängigkeiten werden als Liste gerichteter Kanten in Form von Tupeln (Vorgänger, Nachfolger) dargestellt und über die Vorgangskennungen zugeordnet.
+
+==== 7.1.3 Konsistenzprüfung
+
+* Die Vorgangsdaten und Kanten werden nicht nur auf vorhandene Kennungen geprüft. Zusätzlich kontrolliert die Validierung, dass der Graph kreislauffrei ist, jeder Vorgang vom Start aus erreichbar ist und zum Endvorgang führt, genau ein Start und ein Ende vorliegen, keine Selbst- oder doppelten Kanten existieren und jeder Vorgang genau einer gültigen Ebene zugeordnet ist. Ebenenbreite sowie maximale Vorgänger- und Nachfolgerzahl werden ebenfalls geprüft.
+
+==== 7.1.4 Schwierigkeitsprofile
+
+* Schwierigkeitsprofile werden zentral unter ihrer Bezeichnung gespeichert. Sie enthalten Wertebereiche für Vorgangszahl und Vorgangsdauer sowie Vorgaben für die gewünschte Anzahl an Verzweigungen und Zusammenführungen. Zusätzlich werden die maximale Anzahl an Vorgängen pro Ebene und der Wertebereich für optionale Zusatzkanten hinterlegt. Eine separate Kantenanzahl wird nicht vorgegeben.
+* Wertebereiche werden als Minimum-Maximum-Paare hinterlegt. Die maximale Ebenenbreite wird als fester Profilwert gespeichert. Im derzeitigen Profil „Einfach“ beträgt sie drei Vorgänge; derselbe Grenzwert wird wegen möglicher Ebenensprünge auch für die maximale Zahl unmittelbarer Vorgänger und Nachfolger verwendet.
+
+=== 7.2 Technische Umsetzung der Aufgabengenerierung
+
+Die aktuelle V4-Umsetzung umfasst die dynamische Erzeugung eines strukturell gültigen Netzplans für das Profil „Einfach“. Die Generierungslogik und die interne Validierung befinden sich in `main.py`. Die grafische Ausgabe ist in `netzplan_ausgabe.py` ausgelagert; `tests.py` enthält die aufrufbaren Strukturtests und den Testlauf mit Detailausgabe.
+
+==== 7.2.1 Ablauf der Generierung
+
+Nach Auswahl des Profils werden Vorgangszahl sowie gewünschte Anzahl an Verzweigungs- und Zusammenführungsknoten zufällig innerhalb der jeweiligen Wertebereiche bestimmt. Anschließend werden eindeutige Vorgangskennungen und unabhängig zufällig ausgewählte ganzzahlige Dauern erzeugt.
+
+Die mittleren Vorgänge werden zufällig in Sammlungen von maximal drei Vorgängen aufgeteilt. Start und Ende bilden jeweils eine eigene Sammlung. Zwischen jeweils benachbarten Sammlungen wird ein Verbindungsmuster ausgewählt, in dem jeder Vorgang der linken Sammlung mindestens einen Nachfolger und jeder Vorgang der rechten Sammlung mindestens einen Vorgänger erhält. Dadurch entsteht eine eingebundene Grundstruktur.
+
+Zusätzliche strukturelle Kanten werden anschließend zwischen nicht unmittelbar benachbarten Sammlungen ergänzt. Sie können Ebenen überspringen und erzeugen die gewünschte Anzahl an Verzweigungen bzw. Zusammenführungen. Die beiden Zielanzahlen werden unabhängig voneinander gewählt. Optionale Zusatzkanten werden nur zwischen bereits verzweigenden und bereits zusammenführenden Vorgängen ergänzt; dadurch entstehen keine zusätzlichen Verzweigungs- oder Zusammenführungsknoten. Diese optionalen Kanten können entfallen, wenn keine geeignete Verbindung verfügbar ist.
+
+Erst nach Abschluss der Kantenbildung werden die endgültigen Ebenen aus dem längsten Weg vom Startvorgang abgeleitet. Daher ist die Ebenenzahl kein separat vorgegebener Generierungsparameter, sondern ergibt sich aus der fertigen Netzstruktur.
+
+==== 7.2.2 Aktuelles Schwierigkeitsprofil
+
+Im Profil „Einfach“ werden 6 bis 8 Vorgänge mit Dauern von 1 bis 5 Zeiteinheiten erzeugt. Die Zielbereiche betragen 1 bis 2 Verzweigungen und 1 bis 2 Zusammenführungen. Pro Ebene sind maximal drei Vorgänge zulässig. Zusätzlich werden null bis zwei optionale Kanten angefordert. Weitere Schwierigkeitsprofile sind noch nicht umgesetzt.
+
+Die maximale Ebenenbreite von drei Vorgängen begrenzt zugleich die maximale Anzahl unmittelbarer Vorgänger und Nachfolger auf drei. Diese zusätzliche Begrenzung ist erforderlich, weil Kanten Ebenen überspringen können und dadurch die Anzahl direkter Vorgänger bzw. Nachfolger sonst größer als die Breite einer einzelnen Ebene werden könnte.
+
+==== 7.2.3 Datenrückgabe und grafische Ausgabe
+
+Die Funktion `netzplan_generieren()` liefert einen strukturierten Netzplan als Python-Dictionary zurück. Darin enthalten sind unter anderem das verwendete Schwierigkeitsprofil, Vorgangszahl, Ebenenzahl, Start- und Endvorgang, Vorgangsdaten, Kanten, Ebenen sowie ermittelte Strukturkennzahlen. Diese strukturierte Rückgabe kann später als Grundlage für eine REST-Schnittstelle dienen; eine REST-Schnittstelle oder ALADIN-Integration ist im V4-Prototyp noch nicht enthalten.
+
+Die separate Datei `netzplan_ausgabe.py` erstellt auf Grundlage der Ebenen, Kanten und Vorgangsdaten eine grafische SVG-Darstellung mit Graphviz. Die Ausgabe wird unter `ausgaben/netzplan.svg` gespeichert und bei einem erneuten Lauf überschrieben.
+
+=== 7.3 Berechnung der Musterlösung
+
+=== 7.4 Technische Umsetzung der Bewertung
+
+=== 7.5 Technische Umsetzung der Benutzeroberfläche
+
+=== 7.6 Validierung und Tests
+
+Die interne Validierung wird bei jeder Generierung ausgeführt. Sie prüft die strukturellen Bedingungen des Netzplans und verhindert, dass eine ungültige Struktur als Ergebnis zurückgegeben wird.
+
+Zusätzlich enthält `tests.py` fünf automatisierte Strukturtests. Diese prüfen die Zuordnung aller Vorgänge zu genau einer Ebene, Start und Ende, die Gültigkeit und Eindeutigkeit der Kanten, die Grenzwerte für Ebenen und Verbindungen sowie die Übereinstimmung der tatsächlichen mit den gewünschten Verzweigungs- und Zusammenführungszahlen.
+
+Während der Entwicklung wurde der Generator außerdem mit 10.000 aufeinanderfolgenden Generierungen überprüft. Dabei konnten alle Netzpläne erfolgreich erzeugt und die internen strukturellen Grenzwerte eingehalten werden.
+
+=== 7.7 Optionale Erweiterungen
+
+
+[NOTE]
+====
+*Entstanden unter Nutzung von KI.* Das Konzept befindet sich weiterhin in laufender Bearbeitung.
+====
