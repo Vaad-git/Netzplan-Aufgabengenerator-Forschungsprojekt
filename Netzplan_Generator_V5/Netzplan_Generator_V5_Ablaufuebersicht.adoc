@@ -1,0 +1,372 @@
+= Ablaufübersicht – Netzplangenerator V5
+:toc:
+:toclevels: 3
+:sectnums:
+:icons: font
+
+== Zweck dieser Datei
+
+Diese Datei ist ein verständlicher Lesefahrplan für `generator.py`. Sie beschreibt den Ablauf in Pseudocode und in fachlichen Schritten. Sie soll helfen, den Generator gedanklich nachzuvollziehen, ohne zuerst jede Python-Zeile verstehen zu müssen.
+
+Die Reihenfolge ist bewusst zweigeteilt:
+
+. Zuerst werden die großen Funktionen beschrieben, die den gesamten Generierungsablauf bilden.
+. Danach folgen die kleineren Hilfsfunktionen und die inneren Suchfunktionen, die von den großen Funktionen verwendet werden.
+
+Die Beschreibungen beziehen sich auf den aktuellen Stand der vereinfachten V5-Datei. Die später diskutierte Redundanzprüfung ist noch nicht Bestandteil dieses Codes.
+
+== Teil 1 – Die großen Funktionen im Gesamtprozess
+
+=== 1. `netzplan_generieren()` – Der Hauptablauf
+
+*Aufgabe:* Diese öffentliche Funktion steuert die komplette Erzeugung eines Netzplans. Sie ruft die anderen Funktionen in der richtigen Reihenfolge auf und setzt am Ende alle Informationen zu einem fertigen Netzplan zusammen.
+
+*Pseudocode-Ablauf:*
+
+. Gewünschten Schwierigkeitsgrad prüfen.
+. Passendes Schwierigkeitsprofil laden.
+. Bis zu 200 Generierungsversuche starten:
+.. Zufällige Anzahl an Vorgängen aus dem Profil auswählen.
+.. Vorgänge mit den Bezeichnungen A, B, C usw. erstellen.
+.. Zufällige Anzahl an Start- und Endvorgängen auswählen.
+.. Alle möglichen Kombinationen aus Verzweigungs- und Zusammenführungszielen durchgehen.
+.. Mit `parameter_sind_moeglich()` ungeeignete Kombinationen aussortieren.
+.. Wenn keine Zielkombination möglich ist: nächsten Generierungsversuch starten.
+.. Eine der möglichen Zielkombinationen zufällig auswählen.
+.. Vorgänge zufällig in eine topologische Reihenfolge bringen. Diese Reihenfolge bestimmt, in welche Richtung Kanten verlaufen dürfen.
+.. Mit `collections_zusammenfuehren()` die zusammenhängende Grundstruktur erzeugen.
+.. Wenn keine Grundstruktur gefunden wird: nächsten Generierungsversuch starten.
+.. Aus der Grundstruktur die tatsächlichen Start- und Endvorgänge bestimmen.
+.. Mit `struktur_ergaenzen()` fehlende Verzweigungen und Zusammenführungen ergänzen.
+.. Wenn die Ergänzung scheitert: nächsten Generierungsversuch starten.
+.. Vorgänger und Nachfolger erneut berechnen und Start- sowie Endvorgänge aktualisieren.
+.. Mit `ebenen_ableiten()` die Ebenen anhand des längsten Weges berechnen.
+.. Für jeden Vorgang eine zufällige Dauer aus dem Schwierigkeitsprofil bestimmen.
+.. Anzahl der Verzweigungen und Zusammenführungen erneut zählen.
+.. Alle Daten in einem Netzplan-Dictionary zusammenstellen. Dabei wird jede Kante als `Grundstruktur` oder `Strukturergaenzung` gekennzeichnet.
+.. Mit `netzplan_validieren()` den fertigen Netzplan prüfen.
+.. Wenn die Validierung erfolgreich ist: fertigen Netzplan zurückgeben.
+. Wenn nach 200 Versuchen kein Netzplan erzeugt werden konnte: Fehler melden.
+
+*Merksatz:* `netzplan_generieren()` ist der Dirigent. Die Funktion erzeugt nicht jede Struktur selbst, sondern steuert die einzelnen Schritte und ruft dafür die passenden Funktionen auf.
+
+=== 2. `collections_zusammenfuehren()` – Die zusammenhängende Grundstruktur erzeugen
+
+*Aufgabe:* Jeder Vorgang startet zunächst in einer eigenen Collection. Die Funktion verbindet immer zwei unterschiedliche Collections durch genau eine gerichtete Kante und vereinigt sie anschließend. Am Ende soll nur noch eine gemeinsame Collection übrig sein.
+
+*Pseudocode-Ablauf:*
+
+. Anzahl der notwendigen Zusammenführungsschritte berechnen: Anzahl der Vorgänge minus eins.
+. Berechnen, wie viele Startvorgänge und Endvorgänge durch die Verbindungen aufgelöst werden müssen.
+. Berechnen, wie viele Verbindungen mindestens beziehungsweise höchstens gleichzeitig einen Start und ein Ende auflösen müssen.
+. Daraus mögliche Aufteilungen der Verbindungstypen bilden:
+.. `BEIDE`: Die Verbindung löst einen Start und ein Ende auf.
+.. `NUR_START`: Die Verbindung löst nur einen Start auf.
+.. `NUR_ENDE`: Die Verbindung löst nur ein Ende auf.
+.. `KEINES`: Die Verbindung löst weder einen Start noch ein Ende auf. Sie verbindet aber weiterhin zwei Collections.
+. Reihenfolge der möglichen Aufteilungen zufällig mischen und nacheinander ausprobieren.
+. Für eine Aufteilung die benötigte Liste von Verbindungstypen erstellen.
+. Mit der inneren Funktion `weiterbauen()` die Collections schrittweise verbinden:
+.. Alle Kombinationen aus zwei unterschiedlichen Collections und den darin enthaltenen Vorgängen untersuchen.
+.. Nur Verbindungen in topologischer Richtung zulassen.
+.. Maximale Vorgänger- und Nachfolgerzahlen beachten.
+.. Prüfen, ob die Verbindung zum vorgesehenen Typ (`BEIDE`, `NUR_START`, `NUR_ENDE` oder `KEINES`) passt.
+.. Prüfen, ob die Zielzahlen für Verzweigungen und Zusammenführungen überschritten würden.
+.. Zulässige Verbindungen als Kandidaten sammeln und zufällig mischen.
+.. Einen Kandidaten auswählen, die beiden Collections vereinigen und die neue Kante hinzufügen.
+.. Den nächsten Zusammenführungsschritt rekursiv versuchen.
+.. Wenn ein späterer Schritt scheitert, zum vorherigen Schritt zurückkehren und einen anderen Kandidaten ausprobieren (*Backtracking*).
+. Wenn nach allen Schritten nur noch eine Collection übrig ist: Grundstruktur-Kanten zurückgeben.
+. Wenn keine der möglichen Aufteilungen zu einer vollständigen Grundstruktur führt: `None` zurückgeben.
+
+*Ergebnis:* Eine zusammenhängende Grundstruktur aus genau `Anzahl Vorgänge - 1` Kanten. Die Kanten stammen aus den Collection-Zusammenführungen.
+
+*Merksatz:* Diese Funktion baut das Grundgerüst des Netzplans. Sie versucht bereits, die gewünschten Start-/Endzahlen und die Grenzen für Verzweigungen und Zusammenführungen einzuhalten.
+
+=== 3. `struktur_ergaenzen()` – Fehlende Verzweigungen und Zusammenführungen ergänzen
+
+*Aufgabe:* Die Grundstruktur ist bereits zusammenhängend. Falls darin noch nicht die gewünschte Anzahl an Verzweigungen oder Zusammenführungen vorhanden ist, sucht diese Funktion nach zusätzlichen Kanten.
+
+*Pseudocode-Ablauf:*
+
+. Grundstruktur und ausgewählte Start- und Endvorgänge übernehmen.
+. Aktuelle Anzahl der Verzweigungen und Zusammenführungen sowie die Vorgänger- und Nachfolgerzahlen bestimmen.
+. Prüfen, ob beide Zielzahlen bereits erreicht sind. Wenn ja: aktuelle Kanten zurückgeben.
+. Alle möglichen zusätzlichen Verbindungen zwischen Vorgängen untersuchen.
+. Unzulässige Kandidaten aussortieren:
+.. Ausgewählte Endvorgänge dürfen keinen zusätzlichen Nachfolger bekommen.
+.. Ausgewählte Startvorgänge dürfen keinen zusätzlichen Vorgänger bekommen.
+.. Die Kante muss in topologischer Richtung verlaufen.
+.. Die Kante darf nicht bereits vorhanden sein.
+.. Maximale Vorgänger- und Nachfolgerzahlen dürfen nicht überschritten werden.
+.. Die Zielzahlen für Verzweigungen und Zusammenführungen dürfen nicht überschritten werden.
+.. Die neue Kante muss mindestens eine neue Verzweigung oder Zusammenführung erzeugen.
+. Verbleibende Kandidaten zufällig mischen.
+. Kandidaten nacheinander ausprobieren:
+.. Eine zusätzliche Kante vorläufig zu den bisherigen Kanten hinzufügen.
+.. Die innere Funktion `suchen()` mit dem neuen Kantenstand erneut aufrufen.
+.. Wenn dadurch beide Zielzahlen erreicht werden: Ergebnis zurückgeben.
+.. Wenn der weitere Weg nicht funktioniert: zum vorherigen Stand zurückkehren und einen anderen Kandidaten probieren (*Backtracking*).
+. Wenn keine Ergänzung zum Ziel führt: `None` zurückgeben.
+
+*Ergebnis:* Eine Kantenliste, in der die gewünschten Zahlen an Verzweigungen und Zusammenführungen erreicht sind – oder `None`, wenn die Funktion keine passende Ergänzung findet.
+
+*Wichtige Grenze des aktuellen Codes:* Die Funktion verhindert doppelte identische Kanten, prüft aber noch keine transitive Redundanz. Eine neue Kante kann also einen bereits vorhandenen alternativen Weg abkürzen. Außerdem wird aktuell ein unvollständiger Netzplan nicht übernommen: Werden die Zielzahlen nicht erreicht, liefert die Suchfunktion `None`.
+
+*Merksatz:* `struktur_ergaenzen()` baut nicht das Grundgerüst. Sie fügt nur zusätzliche Kanten hinzu, um fehlende Verzweigungen und Zusammenführungen zu erzeugen.
+
+=== 4. `ebenen_ableiten()` – Ebenen aus dem fertigen Netzplan berechnen
+
+*Aufgabe:* Nachdem die Kantenstruktur fertig ist, berechnet die Funktion die Ebenen der Vorgänge. Maßgeblich ist dabei der längste Weg von einem Startvorgang bis zum jeweiligen Vorgang.
+
+*Pseudocode-Ablauf:*
+
+. Für jeden Vorgang eine Liste seiner direkten Nachfolger anlegen.
+. Vorgänge nach ihrer bereits festgelegten topologischen Reihenfolge sortieren.
+. Für jeden Vorgang zunächst einen Abstand von null festlegen.
+. Vorgänge in topologischer Reihenfolge durchgehen:
+.. Für jede ausgehende Kante den Abstand des Nachfolgers prüfen.
+.. Den Abstand des Nachfolgers auf den größeren Wert aus bisherigem Abstand und aktuellem Abstand plus eins setzen.
+. So viele Ebenenlisten erstellen, wie der größte berechnete Abstand vorgibt.
+. Jeden Vorgang anhand seines Abstands der passenden Ebene zuordnen.
+. Vorgänge innerhalb jeder Ebene alphabetisch sortieren.
+. Ebenen zurückgeben.
+
+*Merksatz:* Die Ebenen beeinflussen die Netzplangenerierung nicht. Sie werden erst nach dem Aufbau der Kantenstruktur berechnet und dienen der Darstellung beziehungsweise späteren Auswertung.
+
+=== 5. `netzplan_validieren()` – Den fertigen Netzplan kontrollieren
+
+*Aufgabe:* Diese Funktion prüft unabhängig vom Aufbau, ob der fertige Netzplan wichtige Regeln erfüllt. Bei einem Fehler wird eine `ValueError`-Ausnahme ausgelöst.
+
+*Pseudocode-Ablauf:*
+
+. Vorgangsliste und Kantenliste aus dem fertigen Netzplan auslesen.
+. Prüfen, ob Kanten doppelt vorkommen.
+. Prüfen, ob jede Kante zwei existierende, unterschiedliche Vorgänge verbindet.
+. Vorgänger- und Nachfolgerzahlen neu berechnen.
+. Tatsächliche Start- und Endvorgänge bestimmen.
+. Prüfen, ob mindestens ein Start und ein Ende existieren.
+. Prüfen, ob gespeicherte Start- und Endvorgänge mit den Kanten übereinstimmen.
+. Prüfen, ob die maximalen Vorgänger- und Nachfolgerzahlen eingehalten werden.
+. Prüfen, ob die gespeicherten Anzahlen an Verzweigungen und Zusammenführungen korrekt sind.
+. Prüfen, ob die gewünschten Anzahlen an Verzweigungen, Zusammenführungen, Starts und Enden erreicht wurden.
+. Mit einer topologischen Sortierung prüfen, ob ein gerichteter Kreislauf existiert.
+. Von den Startvorgängen aus prüfen, ob alle Vorgänge erreichbar sind.
+. Rückwärts von den Endvorgängen aus prüfen, ob alle Vorgänge mindestens ein Ende erreichen.
+. Prüfen, ob alle Vorgänge auch ungerichtet betrachtet zu einem zusammenhängenden Netz gehören.
+. Prüfen, ob jeder Vorgang genau einer berechneten Ebene zugeordnet ist.
+. Wenn alle Prüfungen erfolgreich sind: Funktion ohne Fehler beenden. Andernfalls eine passende Fehlermeldung auslösen.
+
+*Merksatz:* Die Validierung erzeugt nichts. Sie kontrolliert das fertige Ergebnis und soll Fehler erkennen, die während der Generierung entstanden sein könnten.
+
+== Teil 2 – Untergeordnete und interne Funktionen
+
+Die folgenden Funktionen erledigen einzelne Teilaufgaben. Sie werden von den großen Funktionen aus Teil 1 verwendet. Einige davon sind normale Hilfsfunktionen. Andere – `weiterbauen()` und `suchen()` – sind innerhalb ihrer jeweiligen Hauptfunktion definiert und steuern dort die rekursive Suche.
+
+=== 6. `grade_berechnen()` – Direkte Vorgänger und Nachfolger zählen
+
+*Wird verwendet von:* `struktur_zaehlen()`, `struktur_ergaenzen()`, `netzplan_generieren()` und `netzplan_validieren()`.
+
+*Pseudocode-Ablauf:*
+
+. Für jeden Vorgang einen Zähler für Vorgänger mit dem Startwert null anlegen.
+. Für jeden Vorgang einen Zähler für Nachfolger mit dem Startwert null anlegen.
+. Jede Kante `von → nach` durchgehen:
+.. Nachfolger-Zähler von `von` um eins erhöhen.
+.. Vorgänger-Zähler von `nach` um eins erhöhen.
+. Beide Zähler-Dictionaries zurückgeben.
+
+*Merksatz:* Die Funktion zählt nur direkte Kanten. Sie untersucht nicht, ob ein Vorgang über mehrere Zwischenschritte erreichbar ist.
+
+=== 7. `struktur_zaehlen()` – Verzweigungen und Zusammenführungen zählen
+
+*Wird verwendet von:* `struktur_ergaenzen()`, `collections_zusammenfuehren()`, `netzplan_generieren()` und `netzplan_validieren()`.
+
+*Pseudocode-Ablauf:*
+
+. Mit `grade_berechnen()` die direkten Vorgänger und Nachfolger jedes Vorgangs bestimmen.
+. Für jeden Vorgang prüfen, ob er mindestens zwei direkte Nachfolger besitzt. Jeder solche Vorgang zählt als eine Verzweigung.
+. Für jeden Vorgang prüfen, ob er mindestens zwei direkte Vorgänger besitzt. Jeder solche Vorgang zählt als eine Zusammenführung.
+. Anzahl der Verzweigungen, Anzahl der Zusammenführungen sowie die beiden Zähler-Dictionaries zurückgeben.
+
+*Merksatz:* Gezählt werden Vorgänge mit mindestens zwei direkten ausgehenden beziehungsweise eingehenden Kanten.
+
+=== 8. `parameter_sind_moeglich()` – Profilwerte auf grundsätzliche Machbarkeit prüfen
+
+*Wird verwendet von:* `netzplan_generieren()`.
+
+*Pseudocode-Ablauf:*
+
+. Prüfen, ob mehrere Startvorgänge mit der maximalen Vorgängerzahl vereinbar sind.
+. Prüfen, ob mehrere Endvorgänge mit der maximalen Nachfolgerzahl vereinbar sind.
+. Prüfen, ob die gewünschten Verzweigungen und Zusammenführungen mit den jeweiligen Höchstgrenzen überhaupt möglich sind.
+. Mindestanzahl notwendiger Verzweigungen für die gewünschte Zahl an Endvorgängen berechnen.
+. Mindestanzahl notwendiger Zusammenführungen für die gewünschte Zahl an Startvorgängen berechnen.
+. Prüfen, ob die gewünschten Zahlen mindestens diese Mindestwerte erreichen.
+. Eine zusätzliche Grad-Bedingung prüfen: Die mögliche Differenz zwischen End- und Startvorgängen muss zu den gewählten Verzweigungs- und Zusammenführungszahlen sowie den maximalen Vorgänger- und Nachfolgerzahlen passen.
+. `True` zurückgeben, wenn die geprüften Bedingungen erfüllt sind; andernfalls `False`.
+
+*Merksatz:* Diese Funktion prüft mathematische Grundbedingungen, bevor der Generator versucht, tatsächlich einen Netzplan zu bauen. Sie garantiert nicht, dass die spätere Suche eine konkrete Lösung findet.
+
+=== 9. `weiterbauen()` – Rekursive Suche beim Zusammenführen der Collections
+
+*Definiert innerhalb von:* `collections_zusammenfuehren()`.
+
+*Aufgabe:* Diese interne Funktion baut die Collection-Grundstruktur Schritt für Schritt auf. Sie probiert Verbindungsmöglichkeiten aus und geht bei Sackgassen zurück.
+
+*Pseudocode-Ablauf:*
+
+. Prüfen, ob bereits alle vorgesehenen Zusammenführungsschritte ausgeführt wurden.
+. Wenn nur noch eine Collection übrig ist: bisherige Kanten als erfolgreiche Grundstruktur zurückgeben. Andernfalls `None` zurückgeben.
+. Aktuellen Suchzustand aus Schrittzahl, Collections und bisherigen Kanten bilden.
+. Prüfen, ob dieser Zustand bereits erfolglos untersucht wurde. Wenn ja: `None` zurückgeben.
+. Zustand als bereits untersucht speichern.
+. Vorgänger, Nachfolger, Verzweigungen und Zusammenführungen des aktuellen Kantenstands zählen.
+. Aktuell vorgesehene Schrittart aus der vorbereiteten Schrittartenliste lesen.
+. Alle Paare unterschiedlicher Collections und alle Vorgangspaare daraus durchgehen.
+. Kandidaten aussortieren, die gegen topologische Reihenfolge, Vorgänger-/Nachfolgergrenzen, die Schrittart oder die Zielzahlen verstoßen.
+. Zulässige Kandidaten zufällig mischen.
+. Kandidaten nacheinander ausprobieren:
+.. Beide ausgewählten Collections zu einer neuen Collection vereinigen.
+.. Die beiden alten Collections aus der Collection-Liste entfernen und die neue Collection hinzufügen.
+.. Neue Kante ergänzen und Schrittzahl erhöhen.
+.. `weiterbauen()` mit dem neuen Zustand erneut aufrufen.
+.. Bei Erfolg das Ergebnis zurückgeben; bei Misserfolg den nächsten Kandidaten ausprobieren.
+. Wenn alle Kandidaten scheitern: `None` zurückgeben.
+
+*Merksatz:* `weiterbauen()` ist die Suchmaschine hinter der Collection-Zusammenführung. Die Funktion setzt jeweils einen Schritt um und sucht rekursiv nach einer vollständigen Fortsetzung.
+
+=== 10. `suchen()` – Rekursive Suche nach fehlenden Kanten
+
+*Definiert innerhalb von:* `struktur_ergaenzen()`.
+
+*Aufgabe:* Diese interne Funktion sucht zusätzliche Kanten, bis die gewünschte Anzahl an Verzweigungen und Zusammenführungen erreicht ist.
+
+*Pseudocode-Ablauf:*
+
+. Aktuelle Verzweigungen, Zusammenführungen, Vorgänger und Nachfolger zählen.
+. Prüfen, ob beide Zielzahlen erreicht sind. Wenn ja: aktuelle Kanten zurückgeben.
+. Aktuellen Kantenstand als Suchzustand speichern und prüfen, ob er bereits untersucht wurde.
+. Alle möglichen Ausgangs- und Zielvorgänge kombinieren.
+. Kandidaten aussortieren, die ausgewählte Start-/Endvorgänge verändern, gegen die topologische Reihenfolge verstoßen, bereits vorhanden sind oder eine Höchstgrenze überschreiten.
+. Prüfen, ob die neue Kante eine zusätzliche Verzweigung oder Zusammenführung erzeugt.
+. Prüfen, ob die Zielzahlen dadurch überschritten würden.
+. Kandidaten, die keine neue Verzweigung und keine neue Zusammenführung erzeugen, aussortieren.
+. Zulässige Kandidaten zufällig mischen.
+. Kandidaten nacheinander ausprobieren:
+.. Kandidatenkante vorläufig zu den aktuellen Kanten hinzufügen.
+.. `suchen()` mit der erweiterten Kantenliste erneut aufrufen.
+.. Bei Erfolg das Ergebnis zurückgeben; bei Misserfolg den nächsten Kandidaten ausprobieren.
+. Wenn kein Kandidat zum Ziel führt: `None` zurückgeben.
+
+*Merksatz:* `suchen()` ist die Suchmaschine für die nachträgliche Strukturerweiterung. Sie ergänzt jeweils eine Kante und prüft anschließend rekursiv, ob das Ziel noch erreicht werden kann.
+
+== Teil 3 – Wie die Funktionen zusammenhängen
+
+=== Aufruf- und Ablaufübersicht
+
+[source,text]
+----
+netzplan_generieren()
+|
+|-- Profil und zufällige Parameter auswählen
+|-- parameter_sind_moeglich()
+|     `-- Prüft, ob die gewählten Zielwerte grundsätzlich passen
+|
+|-- collections_zusammenfuehren()
+|     `-- weiterbauen()
+|           `-- Erzeugt die zusammenhängende Grundstruktur
+|
+|-- grade_berechnen()
+|     `-- Bestimmt die tatsächlichen Starts und Enden der Grundstruktur
+|
+|-- struktur_ergaenzen()
+|     `-- suchen()
+|           `-- Ergänzt fehlende Verzweigungen und Zusammenführungen
+|
+|-- grade_berechnen()
+|     `-- Aktualisiert Vorgänger, Nachfolger, Starts und Enden
+|
+|-- ebenen_ableiten()
+|     `-- Berechnet Ebenen anhand des längsten Weges
+|
+|-- struktur_zaehlen()
+|     `-- Ermittelt die endgültigen Strukturanzahlen
+|
+|-- Netzplan-Dictionary zusammenstellen
+|
+`-- netzplan_validieren()
+      `-- Prüft das fertige Ergebnis
+----
+
+=== Die drei wichtigsten Unterschiede
+
+[cols="1,2,2",options="header"]
+|===
+| Funktion | Was sie erzeugt oder berechnet | Was sie nicht macht
+
+| `collections_zusammenfuehren()`
+| Verbindet einzelne Collections zu einer gemeinsamen Grundstruktur.
+| Ergänzt nicht nachträglich gezielt fehlende Verzweigungen und Zusammenführungen.
+
+| `struktur_ergaenzen()`
+| Fügt zusätzliche Kanten hinzu, um die gewünschten Verzweigungen und Zusammenführungen zu erreichen.
+| Führt keine Collections mehr zusammen.
+
+| `netzplan_validieren()`
+| Kontrolliert, ob der fertige Netzplan die geprüften Regeln erfüllt.
+| Erzeugt oder repariert keine Kanten.
+|===
+
+== Begriffe zum Nachschlagen
+
+[cols="1,3",options="header"]
+|===
+| Begriff | Bedeutung im Generator
+
+| Vorgang / Knoten
+| Eine Aktivität im Netzplan, zum Beispiel A oder B.
+
+| Kante
+| Eine gerichtete Abhängigkeit zwischen zwei Vorgängen, zum Beispiel A → B.
+
+| Collection
+| Eine Menge von Vorgängen, die im Zusammenführungsprozess bereits miteinander verbunden wurden.
+
+| Grundstruktur
+| Die Kanten, die beim Zusammenführen der Collections entstehen.
+
+| Strukturergaenzung
+| Eine zusätzliche Kante, die nach dem Aufbau der Grundstruktur ergänzt wird.
+
+| Startvorgang
+| Ein Vorgang ohne direkte Vorgänger.
+
+| Endvorgang
+| Ein Vorgang ohne direkte Nachfolger.
+
+| Verzweigung
+| Ein Vorgang mit mindestens zwei direkten Nachfolgern.
+
+| Zusammenführung
+| Ein Vorgang mit mindestens zwei direkten Vorgängern.
+
+| Topologische Reihenfolge / Rang
+| Eine Reihenfolge, in der jede erlaubte Kante von einem früheren zu einem späteren Vorgang verläuft. Das verhindert gerichtete Kreisläufe.
+
+| Backtracking
+| Eine Suchstrategie: Wenn eine ausprobierte Entscheidung später zu keiner Lösung führt, wird zu einem früheren Zustand zurückgegangen und eine andere Möglichkeit probiert.
+
+| Redundante Kante
+| Eine Kante, deren Abhängigkeit bereits über einen anderen gerichteten Weg besteht. Eine transitive Redundanzprüfung ist im aktuellen Generator noch nicht eingebaut.
+|===
+
+== Wichtige Hinweise zum aktuellen Entwicklungsstand
+
+* Die Zielzahlen für Verzweigungen und Zusammenführungen werden im aktuellen Code exakt angestrebt. Wenn sie nicht erreicht werden können, wird dieser Generierungsversuch verworfen.
+* `collections_zusammenfuehren()` erzeugt eine Grundstruktur aus `Anzahl Vorgänge - 1` Kanten.
+* `struktur_ergaenzen()` fügt zusätzliche Kanten hinzu, wenn die Grundstruktur die Zielzahlen noch nicht erfüllt.
+* Die Ebenen werden erst nach dem Aufbau der Kantenstruktur berechnet. Sie steuern nicht die Generierung.
+* Die aktuelle Prüfung schließt doppelte identische Kanten aus, aber keine transitiv redundanten Kanten.
+* Die SVG-Ausgabe unterscheidet später zwischen `Grundstruktur`- und `Strukturergaenzung`-Kanten.
+
