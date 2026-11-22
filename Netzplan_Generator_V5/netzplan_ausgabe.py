@@ -41,6 +41,11 @@ def netzplan_ausgeben(netzplan, dateiname="ausgaben/netzplan.svg"):
     dot_text = "\n".join(zeilen)
 
     ziel = Path(dateiname)
+
+    # Relativen Pfad immer auf den Ordner dieser Python-Datei beziehen.
+    if not ziel.is_absolute():
+        ziel = Path(__file__).resolve().parent / ziel
+
     ziel.parent.mkdir(parents=True, exist_ok=True)
 
     # Graphviz ist ein Systemprogramm und wird direkt aufgerufen.
