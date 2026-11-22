@@ -2,8 +2,8 @@
 import unittest
 import io
 
-from main import netzplan_generieren, Netzplan
-from netzplan_ausgabe import netzplan_ausgeben
+from Backup.Python_Prototyp_V3.main import netzplan_generieren, Netzplan
+from Backup.Python_Prototyp_V3.netzplan_ausgabe import netzplan_ausgeben
 
 
 # ============================================================

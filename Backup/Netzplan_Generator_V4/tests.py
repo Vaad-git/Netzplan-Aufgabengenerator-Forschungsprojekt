@@ -1,8 +1,8 @@
 import io
 import unittest
 
-from main import Netzplan, netzplan_generieren
-from netzplan_ausgabe import netzplan_ausgeben
+from Backup.Netzplan_Generator_V4.main import Netzplan, netzplan_generieren
+from Backup.Netzplan_Generator_V4.netzplan_ausgabe import netzplan_ausgeben
 
 
 # ============================================================
