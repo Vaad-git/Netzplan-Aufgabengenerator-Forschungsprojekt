@@ -111,6 +111,7 @@ def bezeichnungen_mit_ki_generieren(netzplan, modell=GEMINI_MODELL):
     system_prompt = (
         "Du bist ein Experte für Projektplanung und formulierst präzise, "
         "natürliche deutsche Vorgangsbezeichnungen. "
+        "Diese Bezeichnungen sollen bitte konkret sein, nicht nur allgemeine Bezichnungen."
         "Du erhältst einen bereits feststehenden Netzplan. "
         "Erfinde keine Vorgänge und ändere keine Abhängigkeiten oder Dauern. "
         "Gib jedem vorhandenen Vorgang genau eine kurze, eindeutige und "

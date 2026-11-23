@@ -14,6 +14,7 @@ COPY requirements.txt .
 RUN python -m pip install --no-cache-dir -r requirements.txt
 
 COPY api.py .
+COPY main.py .
 COPY netzplan ./netzplan
 COPY ausgaben/.gitkeep ./ausgaben/.gitkeep
 RUN mkdir -p ausgaben
