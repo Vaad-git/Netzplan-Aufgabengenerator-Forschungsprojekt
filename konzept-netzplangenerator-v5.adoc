@@ -1,0 +1,232 @@
+= Konzept: Dynamische Generierung von Netzplanaufgaben (V5)
+Til Müller (s88754)
+Projektseminar VocationALADIN – Wintersemester 2026/2027
+:doctype: book
+:toc: left
+:toclevels: 3
+:icons: font
+
+== 1. Ziel und Grundidee
+
+Ziel des Projekts ist die Entwicklung eines Aufgabengenerators, der individuelle Netzplanaufgaben mit zufällig erzeugten Vorgängen, Dauern und Abhängigkeiten erstellt. Die Aufgaben sollen später in VocationALADIN bereitgestellt und dort bearbeitet sowie bewertet werden können.
+
+Der aktive technische Entwicklungsstand ist der Prototyp V5. Er erzeugt gerichtete, kreislauffreie Netzpläne, stellt diese grafisch als SVG dar, erstellt eine strukturierte Aufgabenstellung und berechnet eine Musterlösung. Optional werden Vorgangsbezeichnungen über die Gemini Developer API generiert. Eine einfache REST-Schnittstelle stellt Netzplan und Aufgabenstellung für eine spätere Integration bereit.
+
+Die Aufgabenbearbeitung und Bewertung sind derzeit prototypisch über eine Konsoleneingabe umgesetzt. Eine grafische Bearbeitungsoberfläche, die Folgefehlerbewertung und die vollständige Integration in VocationALADIN sind noch nicht Bestandteil des implementierten Funktionsumfangs.
+
+== 2. Fachliche Grundlagen und Generierungsparameter
+
+=== 2.1 Netzplanmodell
+
+Der Generator verwendet ein Vorgangsknotennetz (Activity-on-Node, AON). Jeder Vorgang wird als Knoten dargestellt. Gerichtete Kanten beschreiben die unmittelbaren Abhängigkeiten zwischen Vorgängen.
+
+In V5 werden ausschließlich Ende-Anfang-Beziehungen (EA, englisch Finish-to-Start, FS) unterstützt. Ein Nachfolger kann erst beginnen, wenn alle seine unmittelbaren Vorgänger abgeschlossen sind. Weitere Anordnungsbeziehungen und Zeitabstände sind nicht implementiert.
+
+=== 2.2 Schwierigkeitsprofile
+
+Die Generierungsparameter werden über vordefinierte Schwierigkeitsprofile gesteuert. In V5 ist ausschließlich das Profil „Einfach“ implementiert.
+
+[cols="2,2",options="header"]
+|===
+|Parameter |Profil „Einfach“
+|Vorgangszahl |6 bis 8
+|Vorgangsdauer |1 bis 5 Zeiteinheiten
+|Startvorgänge |1 bis 2
+|Endvorgänge |1 bis 2
+|Verzweigungen |1 bis 2
+|Zusammenführungen |1 bis 2
+|Maximale unmittelbare Vorgänger |3 je Vorgang
+|Maximale unmittelbare Nachfolger |3 je Vorgang
+|===
+
+Die konkreten Werte werden innerhalb der vorgegebenen Bereiche zufällig bestimmt. Start- und Endvorgänge sind in der Gesamtzahl der Vorgänge enthalten. Eine maximale Anzahl von Vorgängen pro Ebene ist in V5 nicht als eigener Profilparameter definiert.
+
+=== 2.3 Definitionen der Strukturmerkmale
+
+* *Startvorgang:* Ein Vorgang ohne unmittelbare Vorgänger.
+* *Endvorgang:* Ein Vorgang ohne unmittelbare Nachfolger.
+* *Verzweigung:* Ein Vorgang mit mindestens zwei unmittelbaren Nachfolgern.
+* *Zusammenführung:* Ein Vorgang mit mindestens zwei unmittelbaren Vorgängern.
+* *Ebene:* Die Position eines Vorgangs, abgeleitet aus dem längsten gerichteten Weg von einem Startvorgang. Die Ebenen dienen der Darstellung und der Beschreibung der Vorgänge; sie bestimmen nicht die Generierungsreihenfolge.
+
+Die Anzahl der Kanten wird nicht vorab festgelegt. Sie ergibt sich aus der Grundstruktur und den zusätzlichen Kanten, die zur Erreichung der gewünschten Verzweigungs- und Zusammenführungszahlen erforderlich sind.
+
+== 3. Technische Aufgabengenerierung
+
+=== 3.1 Erzeugung der Grundstruktur
+
+Jeder Vorgang wird zunächst einer eigenen Collection zugeordnet. Anschließend werden schrittweise zwei unterschiedliche Collections ausgewählt und durch eine gerichtete Kante verbunden. Die Kantenrichtung wird durch eine zufällig erzeugte topologische Rangfolge begrenzt. Nach dem Verbinden werden die beiden Collections zu einer gemeinsamen Collection vereinigt.
+
+Dieser Schritt wird wiederholt, bis alle Vorgänge zu einer gemeinsamen Collection gehören. Bei erfolgreicher Durchführung entstehen auf diese Weise eine zusammenhängende, kreislauffreie Grundstruktur und genau eine Verbindung je Zusammenführung zweier vorher getrennter Collections. Die Grundstruktur umfasst damit bei n Vorgängen n - 1 Kanten.
+
+=== 3.2 Strukturerweiterung
+
+Nach der Erzeugung der Grundstruktur prüft der Generator, ob die zufällig bestimmten Zielzahlen für Verzweigungen und Zusammenführungen bereits erreicht sind. Falls erforderlich, werden weitere Kanten ergänzt. Eine zusätzliche Kante muss die Anzahl der Verzweigungen oder Zusammenführungen erhöhen, darf die Grenzwerte für unmittelbare Vorgänger und Nachfolger nicht überschreiten und muss der topologischen Rangfolge entsprechen.
+
+Die Strukturerweiterung verhindert identische doppelte Kanten. Eine vollständige Prüfung auf transitive Redundanz – also auf eine direkte Kante, deren Beziehung bereits durch einen anderen gerichteten Pfad abgebildet wird – ist derzeit nicht implementiert. Diese Einschränkung ist für die aktuelle Prototypstufe dokumentiert und bleibt ein möglicher späterer Verbesserungsbereich.
+
+=== 3.3 Ebenen und Validierung
+
+Die Ebenen werden nach Abschluss der Kantenbildung anhand des längsten Weges berechnet. Anschließend wird der Netzplan validiert. Die Prüfung umfasst insbesondere:
+
+* keine doppelten Kanten, Selbstkanten oder ungültigen Vorgangsreferenzen,
+* Einhaltung der maximalen Anzahl unmittelbarer Vorgänger und Nachfolger,
+* Übereinstimmung der tatsächlichen Start-, End-, Verzweigungs- und Zusammenführungszahlen mit den gewählten Zielwerten,
+* Ausschluss gerichteter Kreisläufe,
+* Erreichbarkeit aller Vorgänge von mindestens einem Startvorgang,
+* Erreichbarkeit mindestens eines Endvorgangs von jedem Vorgang,
+* Zusammenhang des ungerichtet betrachteten Netzplans,
+* vollständige und eindeutige Zuordnung der Vorgänge zu Ebenen.
+
+Die Generierung verwendet bis zu 200 Versuche. Nicht erfolgreiche Parameterkombinationen oder Strukturen werden verworfen. Wenn innerhalb der Versuche kein gültiger Netzplan entsteht, wird ein Fehler gemeldet.
+
+== 4. Aufgabenstellung und Vorgangsbezeichnungen
+
+=== 4.1 Strukturierte Aufgabenstellung
+
+Die aktuell implementierte Aufgabenvariante listet alle Vorgänge mit ihrer Dauer und den unmittelbaren Vorgängern auf. Startvorgänge werden als direkt zu Projektbeginn ausführbar beschrieben. Bei mehreren Vorgängern werden sämtliche unmittelbaren Abhängigkeiten in einem Satz zusammengefasst.
+
+Die Studierenden sollen die Angaben in eine Vorgängertabelle übertragen, den Netzplan erstellen und anschließend FAZ, FEZ, SAZ, SEZ sowie den Gesamtpuffer für alle Vorgänge berechnen.
+
+=== 4.2 KI-generierte Vorgangsbezeichnungen
+
+Optional kann die technische Kennung eines Vorgangs (z. B. A, B, C) durch eine sprachlich sinnvolle Bezeichnung ergänzt werden. Hierfür wird die Gemini Developer API verwendet. Der Generator übergibt der KI die vorhandenen Vorgangskennungen, Dauern, Ebenen sowie die unmittelbaren Vorgänger und Nachfolger.
+
+Die KI soll kurze, eindeutige und zueinander passende Tätigkeitsbezeichnungen für ein gemeinsames Projektszenario erzeugen. Die Antwort wird als JSON verarbeitet und auf Vollständigkeit, Eindeutigkeit und zulässige Länge geprüft.
+
+Die KI darf weder Vorgänge hinzufügen oder entfernen noch Dauern, Kanten, Ebenen oder sonstige Netzplandaten verändern. Die technischen Vorgangskennungen bleiben als stabile Referenzen erhalten und werden in der Grafik ergänzend angezeigt. Bei einem lokalen Konsolenlauf kann bei fehlender API-Konfiguration oder einem KI-Fehler auf die technischen Kennungen zurückgegriffen werden. Bei einer explizit mit KI angeforderten REST-Anfrage wird ein API-Fehler als Fehlerantwort zurückgegeben.
+
+=== 4.3 Geplante Fließtextvariante
+
+Eine zweite Aufgabenvariante soll die Vorgänge, Dauern und Abhängigkeiten nicht als strukturierte Liste darstellen, sondern als zusammenhängenden Projekttext beschreiben. Die Studierenden sollen die relevanten Vorgänge und Beziehungen selbst aus dem Text ableiten.
+
+Diese Fließtextvariante ist noch nicht implementiert. Sie soll später als alternative Ausgabeform zur strukturierten Aufgabenstellung verfügbar sein. Beide Ausgabeformen sollen auf demselben unveränderten Netzplan basieren.
+
+== 5. Musterlösung und Bewertung
+
+=== 5.1 Berechnung der Musterlösung
+
+Für jeden Vorgang werden folgende Werte berechnet:
+
+* FAZ – frühester Anfangszeitpunkt,
+* FEZ – frühester Endzeitpunkt,
+* SAZ – spätester Anfangszeitpunkt,
+* SEZ – spätester Endzeitpunkt,
+* GP – Gesamtpuffer.
+
+Die Vorwärtsrechnung bestimmt den FAZ eines Vorgangs als größten FEZ seiner unmittelbaren Vorgänger. Für Startvorgänge gilt FAZ = 0. Der FEZ ergibt sich aus FAZ plus Vorgangsdauer.
+
+Die Projektdauer entspricht dem größten FEZ aller Endvorgänge. In der Rückwärtsrechnung erhalten Endvorgänge diesen gemeinsamen Projektendzeitpunkt als SEZ. Für alle übrigen Vorgänge ergibt sich der SEZ aus dem kleinsten SAZ ihrer unmittelbaren Nachfolger. Der SAZ ergibt sich aus SEZ abzüglich Vorgangsdauer. Der Gesamtpuffer wird als Differenz aus SAZ und FAZ berechnet.
+
+Die Berechnung setzt einen gültigen, kreislauffreien Netzplan mit mindestens einem Start- und einem Endvorgang voraus. Eine gesonderte Ausgabe des kritischen Pfads ist im aktuellen Modul noch nicht implementiert.
+
+=== 5.2 Direkter Soll-Ist-Vergleich
+
+Die erste Bewertungsstufe vergleicht jeden Schülerwert unabhängig mit dem entsprechenden Wert der Musterlösung. Für jeden Vorgang werden FAZ, FEZ, SAZ, SEZ und Gesamtpuffer einzeln als richtig oder falsch markiert. Fehlende Werte gelten als falsch. Das Ergebnis enthält die Anzahl richtiger Werte, die Gesamtanzahl und den prozentualen Anteil.
+
+Der direkte Vergleich berücksichtigt noch keine Folgefehler. Ein Fehler in einem frühen Vorgang kann daher zu weiteren als falsch bewerteten Zeitwerten führen, auch wenn diese innerhalb der vom Studierenden selbst fortgeführten Rechnung konsistent wären.
+
+=== 5.3 Folgefehler und erweiterte Bewertung
+
+Eine differenzierte Folgefehlerbewertung ist als spätere Erweiterung vorgesehen. Dabei soll zwischen einem ursprünglichen Rechen- oder Strukturfehler und rechnerisch korrekten Folgeergebnissen auf Basis eines vorherigen falschen Wertes unterschieden werden. Die konkrete Punkteverteilung und die technische Erkennung werden erst nach der Integration in die vorgesehene Bearbeitungsoberfläche weiter spezifiziert.
+
+== 6. Lokaler Prototyp und REST-Schnittstelle
+
+=== 6.1 Konsolenablauf
+
+Der lokale Testlauf in `main.py` führt die wesentlichen Komponenten zusammen:
+
+. Netzplan anhand des Profils „Einfach“ erzeugen.
+. Optional KI-generierte Vorgangsbezeichnungen anfordern.
+. SVG und strukturierte Aufgabenstellung aus demselben Netzplan erstellen.
+. Musterlösung berechnen.
+. Schülerlösung über einen von drei Modi bereitstellen: manuelle Eingabe, unveränderte Musterlösung als Testeingabe oder Musterlösung mit einem künstlich um eins erhöhten Wert.
+. Schülerwerte einzeln mit der Musterlösung vergleichen und das Ergebnis ausgeben.
+
+Die beiden automatischen Eingabemodi dienen ausschließlich der Prüfung des Lösungsvergleichs und ersetzen keine spätere Schüleroberfläche.
+
+=== 6.2 REST-Schnittstelle
+
+Die Datei `api.py` stellt einen einfachen HTTP-Entwicklungsserver bereit. Die verfügbaren Endpunkte sind:
+
+[cols="1,3,4",options="header"]
+|===
+|Methode |Pfad |Funktion
+|GET |`/health` |Statusprüfung des Dienstes
+|GET |`/api/v1/profile` |Rückgabe der verfügbaren Schwierigkeitsprofile
+|POST |`/api/v1/netzplaene` |Erzeugung eines Netzplans, optional mit KI-Bezeichnungen
+|GET |`/api/v1/netzplan.svg` |Abruf der zuletzt erzeugten SVG-Datei
+|===
+
+Der POST-Endpunkt akzeptiert ein JSON-Objekt mit `schwierigkeitsgrad` und `ki_bezeichnungen`. Bei aktivierter KI-Namensgebung wird die Gemini Developer API aufgerufen. Die Antwort enthält den strukturierten Netzplan, die Vorgangsbezeichnungen, den Aufgabentext und die URL der SVG-Datei. Die Musterlösung und eine Schnittstelle zur Schülerabgabe und Bewertung werden derzeit nicht über die API bereitgestellt.
+
+Der Server verwendet `HTTPServer`, verarbeitet Anfragen nacheinander und besitzt keine Authentifizierung. Er ist daher ausschließlich als Entwicklungs- und Integrationsprototyp vorgesehen und nicht für einen öffentlichen Produktivbetrieb geeignet.
+
+=== 6.3 Dockerbetrieb
+
+Der Container basiert auf Python 3.12, installiert Graphviz und die in `requirements.txt` aufgeführten Python-Abhängigkeiten. Die API wird innerhalb des Containers auf Port 8000 gestartet. Docker Compose stellt den Dienst lokal unter `http://localhost:8000` bereit und bindet den Ausgabeordner ein.
+
+Der optionale Gemini-API-Schlüssel wird über die Umgebungsvariable `GEMINI_API_KEY` übergeben. Für lokale Entwicklungsumgebungen kann dafür eine nicht versionierte `.env`-Datei im V5-Projektordner verwendet werden. Ein Beispiel ohne echten Schlüssel liegt in `.env.example`.
+
+== 7. Projektstruktur und Module
+
+[cols="2,5",options="header"]
+|===
+|Datei / Verzeichnis |Verantwortlichkeit
+|`netzplan/generator.py` |Schwierigkeitsprofile, Netzplangenerierung, Strukturaufbau und Validierung
+|`netzplan/ki_aufgabenstellung.py` |Datenaufbereitung, Gemini-Aufruf und Validierung der Vorgangsbezeichnungen
+|`netzplan/aufgabenstellung.py` |Erzeugung der strukturierten Aufgabenstellung
+|`netzplan/netzplan_ausgabe.py` |Erzeugung der SVG-Darstellung mit Graphviz
+|`netzplan/musterloesung.py` |Berechnung der Musterlösung und direkter Soll-Ist-Vergleich
+|`main.py` |Lokaler Konsolenablauf und Testmodi
+|`api.py` |REST-Schnittstelle für die spätere Integration
+|`tests/` |Automatisierte Tests der Generierungs-, Bewertungs-, KI- und API-Komponenten
+|`docs/` |Einrichtungs- und technische Ablaufdokumentation
+|===
+
+== 8. Tests und Qualitätssicherung
+
+Die automatisierten Tests werden mit dem Python-Modul `unittest` ausgeführt. Sie prüfen unter anderem wiederholte Netzplangenerierungen, strukturelle Eigenschaften, Musterlösungswerte, Soll-Ist-Vergleiche, die formale Verarbeitung von KI-Antworten sowie den Aufbau der API-Antworten.
+
+Die KI-Tests verwenden simulierte Antworten und benötigen keinen echten API-Schlüssel. Ein tatsächlicher Gemini-Aufruf muss separat mit einem gültigen Schlüssel und einem verfügbaren API-Kontingent geprüft werden. Die SVG-Tests benötigen Graphviz und einen im `PATH` verfügbaren `dot`-Befehl.
+
+== 9. Aktueller Entwicklungsstand und nächste Schritte
+
+=== 9.1 Implementiert
+
+* Zufällige Netzplangenerierung für das Profil „Einfach“ mit Collection-Zusammenführung und Strukturerweiterung.
+* Prüfung der wesentlichen strukturellen Gültigkeitsbedingungen.
+* Ableitung der Ebenen und SVG-Ausgabe.
+* Strukturierte Aufgabenstellung mit unmittelbaren Vorgängern und Vorgangsdauern.
+* Optionale KI-generierte Vorgangsbezeichnungen über die Gemini Developer API.
+* Berechnung der Musterlösung für FAZ, FEZ, SAZ, SEZ und Gesamtpuffer.
+* Direkter Einzelvergleich der Schülerwerte mit der Musterlösung.
+* Lokale Konsoleneingabe mit zwei automatischen Testmodi.
+* Einfache REST-Schnittstelle und Docker-Konfiguration.
+
+=== 9.2 Noch offen
+
+* Zusammenhängende, KI-generierte Fließtext-Aufgabenvariante.
+* Folgefehlerbewertung und differenzierte Punktevergabe.
+* Gesonderte Ermittlung und Bewertung des kritischen Pfads.
+* Grafische Eingabe und Bearbeitung der Netzplanaufgabe.
+* Schnittstelle zur Übermittlung und Bewertung von Schülerlösungen.
+* Vollständige Integration und Erprobung in VocationALADIN.
+* Weitere Schwierigkeitsprofile und zusätzliche Netzplanparameter.
+* Prüfung und gegebenenfalls Vermeidung transitiver Redundanzen in der Strukturerweiterung.
+* Erweiterung der REST-Schnittstelle um geeignete Validierungs-, Fehler- und Bewertungsfunktionen.
+
+=== 9.3 Weiteres Vorgehen
+
+Der nächste Entwicklungsschritt umfasst die Prüfung des vollständigen Docker- und Gemini-Ablaufs sowie die systematische Durchsicht der vorhandenen Module. Anschließend soll die KI-Aufgabengenerierung um die Fließtextvariante erweitert werden. Die Bewertungslogik für Folgefehler wird nach der Anbindung an VocationALADIN konkretisiert, damit die tatsächliche Eingabe- und Bearbeitungssituation berücksichtigt werden kann.
+
+== 10. Begriffserläuterungen
+
+* *AON:* Vorgangsknotennetz, bei dem Vorgänge als Knoten und Abhängigkeiten als gerichtete Kanten dargestellt werden.
+* *Collection:* Temporäre Menge von Vorgängen, die während des schrittweisen Aufbaus der zusammenhängenden Grundstruktur verwendet wird.
+* *FAZ:* Frühester Anfangszeitpunkt.
+* *FEZ:* Frühester Endzeitpunkt.
+* *SAZ:* Spätester Anfangszeitpunkt.
+* *SEZ:* Spätester Endzeitpunkt.
+* *GP:* Gesamtpuffer; Differenz zwischen spätestem und frühestem Anfangszeitpunkt.
+* *Transitive Redundanz:* Eine direkte Kante zwischen zwei Vorgängen, deren Abhängigkeit bereits durch einen anderen gerichteten Pfad zwischen denselben Vorgängen abgebildet wird.

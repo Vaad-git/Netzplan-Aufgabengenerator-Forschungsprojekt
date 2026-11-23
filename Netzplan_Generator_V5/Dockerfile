@@ -1,12 +1,21 @@
 FROM python:3.12-slim
 
-# Graphviz wird als Systemprogramm benötigt. Python-Pakete sind nicht nötig.
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Graphviz wird für die SVG-Erzeugung benötigt.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends graphviz \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY . .
+
+COPY requirements.txt .
+RUN python -m pip install --no-cache-dir -r requirements.txt
+
+COPY api.py .
+COPY netzplan ./netzplan
+COPY ausgaben/.gitkeep ./ausgaben/.gitkeep
 RUN mkdir -p ausgaben
 
 EXPOSE 8000

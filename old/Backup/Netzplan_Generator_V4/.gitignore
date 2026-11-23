@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.svg
+ausgaben/*.svg
+ausgaben/*.pdf
+ausgaben/*.png

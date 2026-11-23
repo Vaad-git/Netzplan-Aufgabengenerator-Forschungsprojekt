@@ -1,0 +1,251 @@
+= Technische Ablaufübersicht – Netzplangenerator V5
+:toc:
+:toclevels: 3
+:sectnums:
+:icons: font
+
+== 1. Zweck und Entwicklungsstand
+
+V5 ist ein Entwicklungsprototyp zur Erzeugung und Verarbeitung dynamischer Netzplanaufgaben. Die Implementierung umfasst die Generierung einer gerichteten, kreislauffreien Netzstruktur, eine SVG-Ausgabe, eine strukturierte Aufgabenstellung, optionale KI-generierte Vorgangsbezeichnungen, die Berechnung einer Musterlösung sowie einen direkten Einzelvergleich von Schülerwerten und Musterlösung.
+
+Die technische Dokumentation beschreibt den aktuellen Codezustand. Nicht implementierte Funktionen werden ausdrücklich als offene Erweiterungen gekennzeichnet.
+
+== 2. Verzeichnis- und Modulstruktur
+
+[source,text]
+----
+Netzplan_Generator_V5/
+|-- netzplan/
+|   |-- generator.py
+|   |-- musterloesung.py
+|   |-- aufgabenstellung.py
+|   |-- ki_aufgabenstellung.py
+|   `-- netzplan_ausgabe.py
+|-- tests/
+|   |-- test_generator.py
+|   |-- test_musterloesung.py
+|   |-- test_ki_aufgabenstellung.py
+|   `-- test_api.py
+|-- docs/
+|   |-- KI_SETUP.md
+|   `-- Netzplan_Generator_V5_Ablaufuebersicht.adoc
+|-- ausgaben/
+|-- api.py
+|-- main.py
+|-- Dockerfile
+|-- docker-compose.yml
+|-- requirements.txt
+`-- README.md
+----
+
+=== Verantwortlichkeiten der Module
+
+[cols="1,3",options="header"]
+|===
+| Modul | Aufgabe
+| `netzplan/generator.py` | Schwierigkeitsprofile, zufällige Netzstruktur, Ebenen und Validierung
+| `netzplan/ki_aufgabenstellung.py` | Aufbereitung der Netzplandaten, Gemini-Anfrage und Validierung der KI-Bezeichnungen
+| `netzplan/aufgabenstellung.py` | Erzeugung einer strukturierten Aufgabenstellung mit Vorgängen, Dauern und direkten Abhängigkeiten
+| `netzplan/musterloesung.py` | Vorwärts- und Rückwärtsrechnung sowie direkter Soll-Ist-Vergleich
+| `netzplan/netzplan_ausgabe.py` | Erzeugung der SVG-Grafik mit Graphviz
+| `main.py` | Lokaler Konsolenablauf einschließlich Eingabe- und Testmodi
+| `api.py` | REST-Endpunkte zur Erzeugung eines Netzplans und einer Aufgabenstellung
+| `tests/` | Automatisierte Tests der Fachlogik und des API-Antwortaufbaus
+|===
+
+== 3. Datenmodell des Netzplans
+
+Der Generator gibt ein Dictionary mit allgemeinen Strukturinformationen und den Vorgängen sowie Kanten zurück. Die Vorgangskennung (beispielsweise `A` oder `B`) ist die technische Referenz. Eine optionale KI-Bezeichnung ergänzt diese Kennung, ersetzt sie jedoch nicht. Dadurch bleiben Kanten, Musterlösung und Schülerwerte eindeutig zuordenbar.
+
+Ein Vorgang enthält mindestens seine Kennung, Dauer und Ebene. Eine Kante enthält den direkten Vorgänger, den direkten Nachfolger und den Typ `Grundstruktur` oder `Strukturergaenzung`. Die Kantenliste ist die maßgebliche Quelle für die Abhängigkeiten.
+
+Die KI-Namensgebung erhält pro Vorgang die Kennung, Dauer, Ebene sowie die direkten Vorgänger und Nachfolger. Die KI darf keine Vorgänge, Dauern oder Kanten verändern.
+
+== 4. Netzplangenerierung
+
+=== 4.1 Schwierigkeitsprofil
+
+Der aktuelle Generator enthält das Profil `Einfach` mit folgenden Bereichen:
+
+[cols="2,2",options="header"]
+|===
+| Parameter | Werte
+| Vorgangszahl | 6 bis 8
+| Vorgangsdauer | 1 bis 5 Zeiteinheiten
+| Startvorgänge | 1 bis 2
+| Endvorgänge | 1 bis 2
+| Verzweigungen | 1 bis 2
+| Zusammenführungen | 1 bis 2
+| Maximale direkte Vorgänger | 3
+| Maximale direkte Nachfolger | 3
+|===
+
+Die konkreten Zielwerte werden je Generierungsversuch zufällig aus dem Profil gewählt. `parameter_sind_moeglich()` prüft vorab grundlegende mathematische Bedingungen für die Kombination aus Start-/Endzahlen, Verzweigungen, Zusammenführungen und Gradgrenzen.
+
+=== 4.2 Aufbau der Grundstruktur
+
+`collections_zusammenfuehren()` startet mit einer Collection je Vorgang. In jedem Schritt werden zwei unterschiedliche Collections durch eine gerichtete Kante verbunden und anschließend vereinigt. Die Funktion führt rekursive Suche mit Backtracking aus, wenn eine Auswahl später zu keiner vollständigen Verbindung führt. Bei erfolgreichem Abschluss besteht die Grundstruktur aus genau `Anzahl Vorgänge - 1` Kanten.
+
+Die topologische Rangfolge bestimmt die zulässige Kantenrichtung. Sie verhindert, dass die Grundstruktur gerichtete Kreisläufe erzeugt. Die Schrittarten `BEIDE`, `NUR_START`, `NUR_ENDE` und `KEINES` steuern, ob eine Verbindung zugleich Start- und/oder Endvorgänge auflöst.
+
+=== 4.3 Strukturerweiterung
+
+`struktur_ergaenzen()` fügt zusätzliche Kanten hinzu, sofern die Grundstruktur die vorgegebenen Zielzahlen für Verzweigungen und Zusammenführungen noch nicht erreicht. Als Verzweigung gilt ein Vorgang mit mindestens zwei direkten Nachfolgern. Als Zusammenführung gilt ein Vorgang mit mindestens zwei direkten Vorgängern.
+
+Die Suche berücksichtigt ausgewählte Start- und Endvorgänge, die topologische Richtung, bereits vorhandene identische Kanten, maximale Vorgänger- und Nachfolgerzahlen sowie die exakten Zielzahlen. Ist keine passende Erweiterung möglich, wird der Generierungsversuch verworfen.
+
+Die Strukturerweiterung prüft derzeit keine transitive Redundanz. Eine zusätzliche Kante kann daher eine bereits über einen anderen gerichteten Pfad bestehende Abhängigkeit nochmals direkt abbilden. Diese Einschränkung ist bekannt und noch nicht behoben.
+
+=== 4.4 Ebenen und Validierung
+
+`ebenen_ableiten()` berechnet die Ebenen nach Fertigstellung der Kantenstruktur anhand des längsten gerichteten Weges zu jedem Vorgang. Die Ebenen dienen der Darstellung und als Zusatzinformation für die KI-Namensgebung; sie steuern nicht die Netzgenerierung.
+
+`netzplan_validieren()` prüft unter anderem:
+
+* eindeutige Kanten und gültige Vorgangsreferenzen,
+* Übereinstimmung der gespeicherten Start- und Endvorgänge mit der Kantenstruktur,
+* maximale direkte Vorgänger- und Nachfolgerzahlen,
+* Zielzahlen für Start-/Endvorgänge, Verzweigungen und Zusammenführungen,
+* Kreislauffreiheit,
+* Erreichbarkeit aller Vorgänge von einem Startvorgang und Erreichbarkeit eines Endvorgangs,
+* ungerichtete Verbindung des gesamten Netzes sowie vollständige Ebenenzuordnung.
+
+Die Validierung entfernt oder repariert keine Kanten. Ein ungültiger Kandidat führt zum Abbruch des jeweiligen Generierungsversuchs.
+
+=== 4.5 Hauptablauf
+
+`netzplan_generieren()` steuert die Generierung. Die Funktion prüft das Profil, erzeugt zufällige Parameter, versucht bis zu 200 Netzstrukturen, baut die Grundstruktur, ergänzt erforderliche Kanten, berechnet die Ebenen und Dauern, stellt das Ergebnis-Dictionary zusammen und validiert den fertigen Netzplan. Der erste gültige Netzplan wird zurückgegeben.
+
+== 5. Aufgabenstellung und KI-Vorgangsbezeichnungen
+
+=== 5.1 Strukturierte Aufgabenstellung
+
+`aufgabenstellung_generieren()` erstellt eine textuelle Aufgabenstellung in strukturierter Form. Jeder Vorgang wird mit seiner Dauer aufgeführt. Für Startvorgänge wird die direkte Startmöglichkeit angegeben; bei übrigen Vorgängen werden alle direkten Vorgänger aufgelistet. Mehrere Vorgänger werden sprachlich korrekt als Liste verbunden.
+
+Optional werden KI-Bezeichnungen angezeigt. Die technische ID bleibt ergänzend in eckigen Klammern erhalten, beispielsweise `Maschinen vorbereiten [A]`. Ohne KI-Bezeichnungen werden die technischen IDs verwendet.
+
+Die Ausgabe ist keine freie Projektgeschichte. Sie legt Vorgänge, Dauern und direkte Abhängigkeiten explizit offen. Eine alternative zusammenhängende Projektbeschreibung, aus der Lernende die Abhängigkeiten selbst ableiten müssen, ist noch nicht implementiert.
+
+=== 5.2 KI-Namensgebung mit Gemini
+
+`ki_aufgabenstellung.py` verwendet die Gemini Developer API über das Python-Paket `google-genai`. Der API-Schlüssel wird aus der Umgebungsvariable `GEMINI_API_KEY` gelesen. Das Modell wird über die Konstante `GEMINI_MODELL` festgelegt.
+
+Die Eingabe enthält für jeden Vorgang:
+
+* technische ID,
+* Vorgangsdauer,
+* Ebene,
+* direkte Vorgänger,
+* direkte Nachfolger.
+
+Der Prompt verlangt kurze, eindeutige, deutschsprachige Tätigkeitsbezeichnungen, die zu einem gemeinsamen Projektkontext passen. Startvorgänge sollen vorbereitende Tätigkeiten, Endvorgänge passende abschließende Tätigkeiten und Zwischenvorgänge sinnvolle Arbeitsschritte beschreiben.
+
+Die Antwort wird als JSON angefordert und anschließend formal geprüft. Die Validierung stellt sicher, dass genau die vorhandenen IDs zurückgegeben werden, keine Bezeichnung leer oder zu lang ist und keine Bezeichnung doppelt verwendet wird. Die fachliche Plausibilität und der gemeinsame Projektkontext können durch diese formalen Prüfungen nicht vollständig garantiert werden und müssen bei der Qualitätsbewertung zusätzlich betrachtet werden.
+
+Die KI verändert ausschließlich die Bezeichnungen. Vorgangszahl, technische IDs, Dauern, Ebenen und Kanten bleiben unverändert. Ohne verfügbaren API-Schlüssel oder bei einem API-Fehler verwendet der lokale Konsolenablauf ersatzweise die technischen IDs.
+
+== 6. Musterlösung und Bewertung
+
+=== 6.1 Musterlösung berechnen
+
+`musterloesung_berechnen()` erstellt aus den Vorgangsdauern und Kanten zunächst Vorgänger- und Nachfolgerlisten. Eine topologische Sortierung stellt sicher, dass die Vorwärtsrechnung Vorgänger vor Nachfolgern verarbeitet.
+
+*Vorwärtsrechnung:* Für Startvorgänge gilt `FAZ = 0`. Für alle übrigen Vorgänge entspricht der FAZ dem Maximum der FEZ-Werte ihrer direkten Vorgänger. Der FEZ ergibt sich aus `FAZ + Dauer`.
+
+Die Projektdauer ist der größte FEZ-Wert aller Endvorgänge.
+
+*Rückwärtsrechnung:* Endvorgänge erhalten den gemeinsamen Projektendzeitpunkt als SEZ. Bei anderen Vorgängen entspricht der SEZ dem Minimum der SAZ-Werte ihrer direkten Nachfolger. Der SAZ ergibt sich aus `SEZ - Dauer`. Der Gesamtpuffer wird mit `GP = SAZ - FAZ` berechnet.
+
+Die Funktion gibt die Projektdauer und für jeden Vorgang FAZ, FEZ, SAZ, SEZ und GP zurück.
+
+=== 6.2 Direkter Einzelvergleich
+
+`loesung_vergleichen()` vergleicht jeden der fünf Schülerwerte eines Vorgangs unabhängig mit dem entsprechenden Musterwert. Ein Wert gilt nur bei exakter Übereinstimmung als richtig. Fehlende Werte werden als falsch gewertet. Zusätzliche, unbekannte Vorgangskennungen verhindern eine vollständig korrekte Gesamtbewertung.
+
+Der aktuelle Vergleich erkennt keine Folgefehler. Wenn ein früherer falscher Wert weitere rechnerisch konsistente Abweichungen verursacht, werden diese weiteren Werte ebenfalls als falsch gewertet. Eine Folgefehlerbewertung ist eine spätere Erweiterung.
+
+== 7. SVG-Ausgabe
+
+`netzplan_ausgeben()` erzeugt eine DOT-Beschreibung und ruft das Systemprogramm `dot` von Graphviz auf. Die SVG-Datei wird im Projektverzeichnis unter `ausgaben/netzplan.svg` gespeichert. Ein relativer Ausgabepfad wird unabhängig vom aktuellen Terminal-Arbeitsverzeichnis auf den V5-Projektordner bezogen.
+
+Startvorgänge werden grün, Endvorgänge orange und übrige Vorgänge grau dargestellt. Kanten der Grundstruktur und der Strukturerweiterung erhalten unterschiedliche Farben. Bei vorhandenen KI-Bezeichnungen erscheinen Name, technische ID und Dauer im Knoten.
+
+== 8. Lokaler Konsolenablauf
+
+`main.py` führt einen vollständigen lokalen Testlauf aus:
+
+. Netzplan generieren.
+. Optional KI-Bezeichnungen über Gemini erzeugen; bei einem Fehler auf technische IDs zurückfallen.
+. SVG, strukturierte Aufgabenstellung und Musterlösung erstellen.
+. Schülerlösung über einen der folgenden Modi bereitstellen:
+.. manuelle Eingabe der Werte FAZ, FEZ, SAZ, SEZ und GP je Vorgang,
+.. automatische Übernahme der vollständigen Musterlösung,
+.. automatische Übernahme der Musterlösung mit genau einem zufällig ausgewählten Wert, der um eins erhöht wurde.
+. Schülerlösung direkt mit der Musterlösung vergleichen und Einzel- sowie Gesamtergebnis ausgeben.
+
+Die beiden automatischen Modi dienen ausschließlich dem Test des Vergleichs. Sie sind keine Eingabemodi für Lernende.
+
+== 9. REST-Schnittstelle
+
+`api.py` stellt die folgenden Endpunkte bereit:
+
+[cols="1,2,3",options="header"]
+|===
+| Methode | Pfad | Funktion
+| `GET` | `/health` | Statusprüfung des Dienstes
+| `GET` | `/api/v1/profile` | Ausgabe der verfügbaren Schwierigkeitsprofile
+| `POST` | `/api/v1/netzplaene` | Erzeugung eines Netzplans und einer strukturierten Aufgabenstellung
+| `GET` | `/api/v1/netzplan.svg` | Abruf der zuletzt erzeugten SVG-Datei
+|===
+
+Der POST-Endpunkt akzeptiert ein JSON-Objekt mit `schwierigkeitsgrad` und optional `ki_bezeichnungen`. Der Standardwert für `ki_bezeichnungen` ist `false`. Bei `true` wird die Gemini-Namensgebung angefordert. Die Antwort enthält die Netzplandaten, ein Dictionary der Bezeichnungen, den Aufgabentext und die SVG-URL. Die Musterlösung wird nicht über diesen Endpunkt ausgegeben. Eine Schnittstelle für Schülerabgaben und deren Bewertung ist nicht implementiert.
+
+Die API verwendet den Python-Standardserver `HTTPServer`, verarbeitet Anfragen nacheinander und besitzt keine Authentifizierung. Sie ist ein Entwicklungsprototyp und nicht für einen ungeschützten produktiven Betrieb vorgesehen. Die SVG-Datei wird bei jeder neuen Generierung überschrieben.
+
+== 10. Tests und Ausführung
+
+Die automatisierten Tests befinden sich im Verzeichnis `tests/`. Sie prüfen die Netzplangenerierung, SVG-Ausgabe, Musterlösungsberechnung, den direkten Vergleich, die Datenaufbereitung und Validierung der KI-Namen sowie den Aufbau der API-Antwort. Die KI-Tests verwenden simulierte Antworten und benötigen keinen API-Schlüssel.
+
+Testausführung aus dem Verzeichnis `Netzplan_Generator_V5`:
+
+[source,powershell]
+----
+python -m unittest discover -s tests -v
+----
+
+Lokaler Konsolenablauf:
+
+[source,powershell]
+----
+python main.py
+----
+
+REST-Schnittstelle:
+
+[source,powershell]
+----
+python api.py
+----
+
+Containerbetrieb:
+
+[source,powershell]
+----
+docker compose up --build
+docker compose down
+----
+
+Graphviz wird lokal als Systemprogramm benötigt. Im Docker-Image wird Graphviz über den Paketmanager installiert. Die Gemini-Abhängigkeit wird über `requirements.txt` installiert.
+
+== 11. Bekannte Einschränkungen und offene Erweiterungen
+
+* Es ist nur das Schwierigkeitsprofil `Einfach` implementiert.
+* Es werden ausschließlich Ende-Anfang-Beziehungen verwendet.
+* Eine Prüfung auf transitive Redundanz ist nicht implementiert.
+* Der Musterlösungsvergleich berücksichtigt keine Folgefehler.
+* Eine freie Projektgeschichte als zweite Aufgabenstellungsvariante fehlt.
+* Eine Eingabeoberfläche für Lernende und die Integration in VocationALADIN sind noch offen.
+* Die REST-Schnittstelle bietet noch keine Abgabe-, Bewertungs- oder Authentifizierungsfunktionen.
+* Die KI-Bezeichnungen benötigen eine Internetverbindung und einen Gemini-API-Schlüssel. Im kostenlosen API-Tarif können Eingaben zur Produktverbesserung verwendet werden; vertrauliche oder personenbezogene Daten sind daher nicht zu übermitteln.
+
+Als nächste Entwicklungsbereiche sind die Projekttext-Variante der Aufgabenstellung, die Integration in VocationALADIN und eine fachlich abgesicherte Folgefehlerbewertung vorgesehen.

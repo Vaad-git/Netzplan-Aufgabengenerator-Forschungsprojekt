@@ -1,12 +1,12 @@
-
 """Lokaler Testlauf: Netzplan, Aufgabenstellung und Lösungsvergleich."""
 
 import random
 
-from generator import netzplan_generieren
-from netzplan_ausgabe import netzplan_ausgeben
-from aufgabenstellung import aufgabenstellung_generieren
-from musterloesung import (
+from netzplan.generator import netzplan_generieren
+from netzplan.netzplan_ausgabe import netzplan_ausgeben
+from netzplan.aufgabenstellung import aufgabenstellung_generieren
+from netzplan.ki_aufgabenstellung import bezeichnungen_mit_ki_generieren
+from netzplan.musterloesung import (
     WERTE,
     musterloesung_berechnen,
     loesung_vergleichen,
@@ -24,14 +24,15 @@ def vorgaenger_ermitteln(netzplan):
     return vorgaenger
 
 
-def schuelerloesung_manuell_eingeben(netzplan):
+def schuelerloesung_manuell_eingeben(netzplan, bezeichnungen=None):
     """Liest die fünf Werte für jeden Vorgang über die Konsole ein."""
 
     vorgaenger = vorgaenger_ermitteln(netzplan)
+    bezeichnungen = bezeichnungen or {}
     schuelerloesung = {"vorgaenge": {}}
 
     print("\nEINGABE DER SCHÜLERLÖSUNG")
-    print("Gib pro Vorgang die fünf Werte in dieser Reihenfolge ein:")
+    print("Eingabeformat je Vorgang: fünf Werte in folgender Reihenfolge:")
     print("FAZ, FEZ, SAZ, SEZ, GP")
     print("Beispiel: 0, 6, 0, 6, 0")
     print("Negative Zahlen sind als Eingabe erlaubt und werden normal bewertet.\n")
@@ -40,12 +41,23 @@ def schuelerloesung_manuell_eingeben(netzplan):
         direkte_vorgaenger = sorted(vorgaenger[name])
 
         if direkte_vorgaenger:
-            vorgaenger_text = ", ".join(direkte_vorgaenger)
+            vorgaenger_anzeigen = []
+            for vorgaenger_name in direkte_vorgaenger:
+                vorgaenger_bezeichnung = bezeichnungen.get(vorgaenger_name)
+                if vorgaenger_bezeichnung:
+                    vorgaenger_anzeigen.append(
+                        f"{vorgaenger_bezeichnung} [{vorgaenger_name}]"
+                    )
+                else:
+                    vorgaenger_anzeigen.append(vorgaenger_name)
+            vorgaenger_text = ", ".join(vorgaenger_anzeigen)
         else:
             vorgaenger_text = "keine (Startvorgang)"
 
+        bezeichnung = bezeichnungen.get(name)
+        name_text = f"{bezeichnung} [{name}]" if bezeichnung else name
         print(
-            f"Vorgang {name} | Dauer: {daten['dauer']} | "
+            f"Vorgang {name_text} | Dauer: {daten['dauer']} | "
             f"Vorgänger: {vorgaenger_text}"
         )
 
@@ -54,13 +66,13 @@ def schuelerloesung_manuell_eingeben(netzplan):
             teile = [teil.strip() for teil in eingabe.split(",")]
 
             if len(teile) != len(WERTE):
-                print("  Bitte genau fünf Zahlen eingeben, getrennt durch Kommas.")
+                print("  Fehler: Genau fünf Zahlen, getrennt durch Kommas, sind erforderlich.")
                 continue
 
             try:
                 zahlen = [int(teil) for teil in teile]
             except ValueError:
-                print("  Bitte nur ganze Zahlen eingeben, zum Beispiel: 0, 6, 0, 6, 0")
+                print("  Fehler: Es sind ganze Zahlen erforderlich, z. B. 0, 6, 0, 6, 0.")
                 continue
 
             schuelerloesung["vorgaenge"][name] = dict(zip(WERTE, zahlen))
@@ -109,7 +121,7 @@ def schuelerloesung_mit_einem_fehler_erstellen(musterloesung):
     return schuelerloesung, fehlerinfo
 
 
-def schuelerloesung_auswaehlen(netzplan, musterloesung):
+def schuelerloesung_auswaehlen(netzplan, musterloesung, bezeichnungen=None):
     """Bietet manuelle Eingabe und zwei automatische Testmöglichkeiten an."""
 
     print("LÖSUNG EINGEBEN / TESTMODUS")
@@ -118,10 +130,10 @@ def schuelerloesung_auswaehlen(netzplan, musterloesung):
     print("3 - Musterlösung mit genau einem Fehler abschicken (Test)\n")
 
     while True:
-        auswahl = input("Bitte Option 1, 2 oder 3 auswählen: ").strip()
+        auswahl = input("Auswahl [1/2/3]: ").strip()
 
         if auswahl == "1":
-            return schuelerloesung_manuell_eingeben(netzplan), None
+            return schuelerloesung_manuell_eingeben(netzplan, bezeichnungen), None
 
         if auswahl == "2":
             print("\nTestmodus: Die unveränderte Musterlösung wird abgeschickt.\n")
@@ -139,17 +151,23 @@ def schuelerloesung_auswaehlen(netzplan, musterloesung):
             )
             return schuelerloesung, fehlerinfo
 
-        print("Ungültige Auswahl. Bitte 1, 2 oder 3 eingeben.\n")
+        print("Ungültige Auswahl. Erlaubte Eingaben: 1, 2 oder 3.\n")
 
 
-def vergleichsergebnis_ausgeben(vergleich):
+def vergleichsergebnis_ausgeben(vergleich, bezeichnungen=None):
     """Gibt die Ergebnisse des Einzelvergleichs übersichtlich aus."""
 
+    bezeichnungen = bezeichnungen or {}
     print("\nERGEBNIS DER ÜBERPRÜFUNG")
 
     for name, vorgangsergebnis in vergleich["vorgaenge"].items():
+        vorgangsbezeichnung = bezeichnungen.get(name)
+        vorgangsname = (
+            f"{vorgangsbezeichnung} [{name}]"
+            if vorgangsbezeichnung else name
+        )
         print(
-            f"\nVorgang {name}: "
+            f"\nVorgang {vorgangsname}: "
             f"{vorgangsergebnis['anzahl_richtig']}/"
             f"{vorgangsergebnis['anzahl_werte']} Werte richtig"
         )
@@ -187,27 +205,41 @@ def main():
     # 1. Netzplan einmal erzeugen.
     plan = netzplan_generieren()
 
-    # 2. Grafik, Aufgabenstellung und Musterlösung aus demselben Netzplan erstellen.
-    datei = netzplan_ausgeben(plan)
-    aufgabenstellung = aufgabenstellung_generieren(plan)
+    # 2. Vorgangsbezeichnungen über die Gemini API erzeugen.
+    print("KI erstellt passende Vorgangsbezeichnungen ...")
+    try:
+        bezeichnungen = bezeichnungen_mit_ki_generieren(plan)
+        print("KI-Bezeichnungen wurden erfolgreich erstellt.")
+    except RuntimeError as fehler:
+        # Der restliche Prototyp bleibt auch ohne laufende KI testbar.
+        bezeichnungen = {}
+        print("\nHINWEIS: KI-Namensgebung war nicht verfügbar.")
+        print(fehler)
+        print("Die Aufgabenstellung verwendet stattdessen die IDs A, B, C usw.\n")
+
+    # 3. Grafik, Aufgabenstellung und Musterlösung aus demselben Netzplan erstellen.
+    datei = netzplan_ausgeben(plan, bezeichnungen=bezeichnungen)
+    aufgabenstellung = aufgabenstellung_generieren(plan, bezeichnungen)
     musterloesung = musterloesung_berechnen(plan)
 
-    print("NETZPLAN WURDE ERZEUGT")
+    print("\nNETZPLAN WURDE ERZEUGT")
     print("Vorgänge:", plan["vorgangszahl"])
     print("Kanten:", plan["anzahl_kanten"])
     print("Grafik:", datei.resolve())
 
     print("\n" + aufgabenstellung)
-    print("\nBitte öffne die SVG-Grafik, bevor du die Werte eingibst.")
+    print("\nSVG-Grafik vor der Eingabe öffnen. Danach die Vorgangswerte erfassen.")
 
-    # 3. Schülerlösung manuell oder über einen Testmodus erstellen.
-    schuelerloesung, _ = schuelerloesung_auswaehlen(plan, musterloesung)
+    # 4. Schülerlösung manuell oder über einen Testmodus erstellen.
+    schuelerloesung, _ = schuelerloesung_auswaehlen(
+        plan, musterloesung, bezeichnungen
+    )
 
-    # 4. Schülerlösung mit der Musterlösung vergleichen.
+    # 5. Schülerlösung mit der Musterlösung vergleichen.
     vergleich = loesung_vergleichen(musterloesung, schuelerloesung)
 
-    # 5. Einzel- und Gesamtergebnis anzeigen.
-    vergleichsergebnis_ausgeben(vergleich)
+    # 6. Einzel- und Gesamtergebnis anzeigen.
+    vergleichsergebnis_ausgeben(vergleich, bezeichnungen)
 
 
 if __name__ == "__main__":
